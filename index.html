@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WeCollect Document Generator</title>
+<script src="https://unpkg.com/docx"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+<style>
+  :root{
+    --purple:#4B3FCF; --purple-dark:#372E9E; --purple-light:#EFEDFC;
+    --ink:#1B1730; --gray:#6B6880; --line:#E4E2F1; --paper:#FFFFFF; --canvas:#F5F4FB; --red:#D64545;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;background:var(--canvas);color:var(--ink);}
+  .brand{display:flex;align-items:baseline;gap:6px;}
+  .brand .we{font-weight:400;color:var(--ink);font-size:24px;}
+  .brand .collect{font-weight:800;color:var(--purple);font-size:24px;font-style:italic;}
+
+  /* ============ SCREEN: SELECT ============ */
+  .screen-center{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:56px 24px;}
+  .select-head{text-align:center;max-width:640px;margin-bottom:40px;}
+  .select-head .brand{justify-content:center;margin-bottom:10px;}
+  .select-head h1{font-size:22px;margin:0 0 8px;}
+  .select-head p{color:var(--gray);font-size:14px;line-height:1.6;margin:0;}
+  .card-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;max-width:820px;width:100%;}
+  .tpl-card{
+    background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:22px;cursor:pointer;
+    transition:.15s; text-align:left;
+  }
+  .tpl-card:hover{border-color:var(--purple);box-shadow:0 6px 20px rgba(75,63,207,.12);transform:translateY(-2px);}
+  .tpl-card .swatch{width:36px;height:36px;border-radius:9px;background:var(--purple);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;margin-bottom:14px;}
+  .tpl-card h3{margin:0 0 6px;font-size:15.5px;}
+  .tpl-card p{margin:0 0 10px;font-size:12.5px;color:var(--gray);line-height:1.55;}
+  .tpl-card .examples{font-size:11px;color:var(--purple-dark);font-weight:600;}
+
+  /* ============ SCREEN: INPUT ============ */
+  .input-box{max-width:640px;width:100%;background:#fff;border:1px solid var(--line);border-radius:14px;padding:28px;}
+  .back-link{align-self:flex-start;max-width:640px;width:100%;margin-bottom:14px;}
+  .back-link a{color:var(--purple-dark);font-size:13px;text-decoration:none;font-weight:600;cursor:pointer;}
+  .input-box h2{margin:0 0 4px;font-size:17px;}
+  .input-box .sub{color:var(--gray);font-size:13px;margin:0 0 18px;}
+  .tab-toggle{display:flex;background:var(--purple-light);border-radius:999px;padding:4px;margin-bottom:16px;width:fit-content;}
+  .tab-toggle button{border:none;background:transparent;padding:8px 16px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--purple-dark);cursor:pointer;}
+  .tab-toggle button.active{background:var(--purple);color:#fff;}
+  textarea#pasteText{width:100%;min-height:180px;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:13.5px;font-family:inherit;resize:vertical;}
+  textarea#pasteText:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px var(--purple-light);}
+  .drop-zone{border:2px dashed var(--line);border-radius:10px;padding:30px;text-align:center;color:var(--gray);font-size:13px;}
+  .drop-zone.hasfile{border-color:var(--purple);color:var(--purple-dark);background:var(--purple-light);}
+  .drop-zone input[type=file]{margin-top:10px;}
+  .gen-btn{width:100%;background:var(--purple);color:#fff;border:none;padding:13px;border-radius:9px;font-size:14.5px;font-weight:700;cursor:pointer;margin-top:18px;}
+  .gen-btn:hover{background:var(--purple-dark);}
+  .gen-btn:disabled{opacity:.6;cursor:not-allowed;}
+  .skip-link{display:block;text-align:center;margin-top:14px;font-size:12.5px;color:var(--gray);}
+  .skip-link a{color:var(--purple-dark);font-weight:600;cursor:pointer;text-decoration:none;}
+  .ai-status{display:none;align-items:center;gap:10px;margin-top:14px;font-size:13px;color:var(--purple-dark);font-weight:600;}
+  .spinner{width:16px;height:16px;border:2px solid var(--purple-light);border-top-color:var(--purple);border-radius:50%;animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .ai-error{display:none;margin-top:12px;background:#FDEDED;border:1px solid #F5C6C6;color:#8a2b2b;padding:10px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;}
+
+  /* ============ SCREEN: EDIT (form + preview) ============ */
+  .app{display:grid;grid-template-columns:400px 1fr;min-height:100vh;}
+  .sidebar{background:var(--paper);border-right:1px solid var(--line);padding:22px;overflow-y:auto;max-height:100vh;}
+  .sidebar-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+  .tpl-badge{font-size:11px;font-weight:700;color:var(--purple-dark);background:var(--purple-light);padding:4px 9px;border-radius:999px;}
+  .change-link{font-size:11.5px;color:var(--gray);cursor:pointer;text-decoration:underline;}
+  .brand-sub{font-size:11.5px;color:var(--gray);margin:2px 0 18px;}
+
+  .section-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--purple-dark);margin:20px 0 10px;display:flex;align-items:center;gap:8px;}
+  .section-label:first-of-type{margin-top:0;}
+  .section-label::after{content:"";flex:1;height:1px;background:var(--line);}
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin:12px 0 5px;}
+  input[type=text],input[type=number],textarea,select{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-size:13.5px;font-family:inherit;color:var(--ink);background:#fff;resize:vertical;}
+  input:focus,textarea:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px var(--purple-light);}
+  textarea{min-height:56px;}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .check-row{display:flex;align-items:center;gap:8px;margin:12px 0 4px;}
+  .check-row input[type=checkbox]{width:16px;height:16px;}
+  .check-row label{margin:0;}
+  .row-list .row-item{display:flex;gap:6px;margin-bottom:6px;align-items:flex-start;}
+  .row-item textarea,.row-item input{flex:1;}
+  .icon-btn{border:1px solid var(--line);background:#fff;border-radius:8px;width:32px;height:32px;min-width:32px;cursor:pointer;font-size:15px;color:var(--gray);display:flex;align-items:center;justify-content:center;line-height:1;}
+  .icon-btn:hover{border-color:var(--red);color:var(--red);}
+  .add-btn{margin-top:4px;border:1px dashed var(--purple);background:var(--purple-light);color:var(--purple-dark);border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;width:100%;}
+  .add-btn:hover{background:#e2ddfa;}
+  .obj-row{border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;background:#FAFAFE;}
+  .obj-row-top{display:flex;gap:6px;margin-bottom:6px;}
+  .obj-row-top input{flex:1;}
+
+  .actions{position:sticky;bottom:0;background:var(--paper);padding-top:16px;margin-top:24px;border-top:1px solid var(--line);}
+  .btn-primary{width:100%;background:var(--purple);color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;}
+  .btn-primary:hover{background:var(--purple-dark);}
+  .btn-secondary{width:100%;background:#fff;color:var(--purple-dark);border:1.5px solid var(--purple);padding:11px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;}
+  .btn-secondary:hover{background:var(--purple-light);}
+  .hint{font-size:11px;color:var(--gray);margin-top:8px;line-height:1.5;}
+
+  .preview-wrap{padding:32px;overflow-y:auto;max-height:100vh;display:flex;justify-content:center;}
+  .page{background:#fff;width:794px;min-height:1123px;box-shadow:0 4px 24px rgba(27,23,48,.12);padding:0 0 40px 0;}
+
+  .p-header{background:linear-gradient(135deg,var(--purple),var(--purple-dark));color:#fff;padding:34px 44px 26px;}
+  .p-header h1{margin:0 0 8px;font-size:26px;}
+  .p-header .org{font-size:12px;opacity:.85;margin-bottom:6px;}
+  .p-header p{margin:0;font-size:13.5px;opacity:.92;line-height:1.5;max-width:640px;}
+  .p-header .geo{margin-top:14px;font-size:12.5px;font-weight:600;}
+  .p-body{padding:26px 44px;}
+  .p-body h2{color:var(--purple-dark);font-size:16px;margin:22px 0 10px;}
+  .p-body h2:first-child{margin-top:0;}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:0 34px;}
+  .p-body p,.p-body li{font-size:12.5px;line-height:1.6;color:var(--ink);}
+  .p-body ul,.p-body ol{margin:6px 0;padding-left:18px;}
+  .p-body table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px;}
+  .p-body th{background:var(--purple);color:#fff;text-align:left;padding:8px;font-size:11.5px;}
+  .p-body td{padding:8px;border-bottom:1px solid var(--line);vertical-align:top;}
+  .p-body tr:nth-child(even) td{background:#FAFAFE;}
+  .total-row td{font-weight:700;background:var(--purple-light) !important;}
+  .p-footer{display:flex;justify-content:space-between;align-items:center;padding:16px 44px 0;margin-top:20px;border-top:1px solid var(--line);}
+  .p-footer .logo{font-size:14px;}
+  .p-footer .logo .we{color:var(--ink);}
+  .p-footer .logo .collect{color:var(--purple);font-weight:800;font-style:italic;}
+  .p-footer .addr{font-size:10.5px;color:var(--gray);text-align:right;}
+  .disclaimer{color:var(--red);font-size:11px;font-style:italic;margin-top:6px;}
+  .obj-block{margin-bottom:12px;}
+  .obj-block .t{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:2px;}
+  .phase-block{border-left:3px solid var(--purple);padding:4px 0 4px 14px;margin-bottom:14px;}
+  .phase-block .plabel{font-size:10.5px;font-weight:700;color:var(--purple-dark);text-transform:uppercase;letter-spacing:.05em;}
+  .phase-block .ptitle{font-weight:700;font-size:13.5px;margin:2px 0 4px;}
+
+  /* Invoice layout */
+  .inv-page{padding:40px 48px;}
+  .inv-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px;}
+  .inv-top .logo{font-size:20px;}
+  .inv-top .logo .we{color:var(--ink);}
+  .inv-top .logo .collect{color:var(--purple);font-weight:800;font-style:italic;}
+  .inv-top .tagline{font-size:11px;color:var(--gray);margin-top:2px;}
+  .inv-meta{text-align:right;font-size:12.5px;}
+  .inv-meta .inv-no{font-size:15px;font-weight:800;color:var(--purple-dark);}
+  .inv-meta div{margin-top:3px;}
+  .inv-billto{margin-bottom:18px;}
+  .inv-billto .lbl{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;}
+  .inv-billto .name{font-size:14px;font-weight:700;margin-top:4px;}
+  .inv-billto .co{font-size:13px;color:var(--gray);}
+  .inv-desc{margin-bottom:18px;font-size:12.5px;line-height:1.6;}
+  .inv-desc .lbl{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;}
+  .inv-table{width:100%;border-collapse:collapse;margin-bottom:6px;}
+  .inv-table th{background:var(--purple);color:#fff;text-align:left;padding:9px 10px;font-size:11.5px;}
+  .inv-table th.num,.inv-table td.num{text-align:right;}
+  .inv-table td{padding:9px 10px;border-bottom:1px solid var(--line);font-size:12.5px;}
+  .inv-totals{width:280px;margin-left:auto;margin-top:6px;}
+  .inv-totals div{display:flex;justify-content:space-between;padding:6px 10px;font-size:12.5px;}
+  .inv-totals .grand{font-weight:800;background:var(--purple-light);border-radius:6px;font-size:13.5px;}
+  .inv-vat-note{font-size:11px;color:var(--gray);font-style:italic;margin-top:8px;text-align:right;}
+  .inv-payment{margin-top:26px;border-top:1px solid var(--line);padding-top:16px;}
+  .inv-payment .lbl{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+  .inv-payment .opt{font-size:12.5px;line-height:1.7;margin-bottom:10px;}
+  .inv-payment .opt b{color:var(--purple-dark);}
+  .inv-notes{font-size:11.5px;color:var(--gray);margin-top:10px;line-height:1.6;white-space:pre-line;}
+  .inv-thanks{text-align:center;font-size:16px;font-weight:800;color:var(--purple-dark);letter-spacing:.08em;margin:30px 0 18px;}
+  .inv-footer{text-align:center;font-size:10.5px;color:var(--gray);border-top:1px solid var(--line);padding-top:12px;}
+
+  @media print{
+    .sidebar,.back-link{display:none;}
+    .app{display:block;}
+    .preview-wrap{padding:0;max-height:none;overflow:visible;}
+    .page{box-shadow:none;width:100%;}
+    body{background:#fff;}
+  }
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr;}
+    .sidebar{max-height:none;border-right:none;border-bottom:1px solid var(--line);}
+    .preview-wrap{max-height:none;padding:20px;}
+    .page{width:100%;}
+    .card-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= SCREEN 1: TEMPLATE SELECT ================= -->
+<div class="screen-center" id="screenSelect">
+  <div class="select-head">
+    <div class="brand"><span class="we">we</span><span class="collect">collect</span></div>
+    <h1 style="margin-top:14px">Document Generator</h1>
+    <p>Pick the type of document you need. On the next step, paste your notes or a brief paragraph — or upload a file — and AI will structure it into the right format for you to review and download.</p>
+  </div>
+  <div class="card-grid">
+    <div class="tpl-card" onclick="selectTemplate('brief')">
+      <div class="swatch">📄</div>
+      <h3>Project Brief</h3>
+      <p>A quick 1-page overview for early client conversations: objectives, target respondents, methodology, and an indicative cost range.</p>
+      <div class="examples">e.g. Brand Awareness Survey, Gen Z Taste Study</div>
+    </div>
+    <div class="tpl-card" onclick="selectTemplate('quote')">
+      <div class="swatch">💰</div>
+      <h3>Detailed Quote</h3>
+      <p>A costed proposal with a full line-item budget table, subtotal/tax/total, and an implementation timeline — for when a project is ready to move to commercial agreement.</p>
+      <div class="examples">e.g. Retail Audit Panel, Digital Ticketing Mapping</div>
+    </div>
+    <div class="tpl-card" onclick="selectTemplate('invoice')">
+      <div class="swatch">🧾</div>
+      <h3>Client Invoice</h3>
+      <p>A billing document with invoice number, line items, tax, optional deposit split, and your bank payment details.</p>
+      <div class="examples">e.g. WC13066, WC13075</div>
+    </div>
+    <div class="tpl-card" onclick="selectTemplate('proposal')">
+      <div class="swatch">📘</div>
+      <h3>Full Proposal Deck</h3>
+      <p>A long-form multi-section proposal for large institutional clients: executive summary, objectives, scope, methodology, technology, phased implementation plan, and deliverables.</p>
+      <div class="examples">e.g. NDDC Street Light Mapping, Development Gap Analysis</div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= SCREEN 2: INPUT ================= -->
+<div class="screen-center" id="screenInput" style="display:none">
+  <div class="back-link"><a onclick="goTo('select')">&larr; Back to templates</a></div>
+  <div class="input-box">
+    <h2 id="inputTitle">Describe the project</h2>
+    <p class="sub" id="inputSub">Paste an email thread, call notes, or a rough paragraph. AI will pull out the details and structure them into the template.</p>
+
+    <div class="tab-toggle">
+      <button id="tabPaste" class="active" onclick="setInputTab('paste')">Paste text</button>
+      <button id="tabUpload" onclick="setInputTab('upload')">Upload file</button>
+    </div>
+
+    <div id="pasteTab">
+      <textarea id="pasteText" placeholder="e.g. Client is UAC Foods, wants a retail audit panel for Zuri Seasoning across Lagos, 400 outlets, 4 waves a year, need pricing for setup, fieldwork, QC and reporting..."></textarea>
+    </div>
+    <div id="uploadTab" style="display:none">
+      <div class="drop-zone" id="dropZone">
+        📎 Upload a .txt or .docx file (notes, a past brief, an RFP)
+        <br><input type="file" id="fileInput" accept=".txt,.docx" onchange="handleFile(this.files[0])">
+      </div>
+    </div>
+
+    <button class="gen-btn" onclick="generateWithAI()">✨ Generate with AI</button>
+    <div class="ai-status" id="aiStatus"><div class="spinner"></div><span>Reading and structuring your input…</span></div>
+    <div class="ai-error" id="aiError"></div>
+    <span class="skip-link">or <a onclick="skipAI()">start with a blank template instead</a></span>
+  </div>
+</div>
+
+<!-- ================= SCREEN 3: EDIT ================= -->
+<div class="app" id="screenEdit" style="display:none">
+  <div class="sidebar">
+    <div class="sidebar-top">
+      <div class="brand"><span class="we">we</span><span class="collect">collect</span></div>
+      <span class="tpl-badge" id="tplBadge">Brief</span>
+    </div>
+    <div class="brand-sub">
+      <a class="change-link" onclick="goTo('select')">Change template</a> ·
+      <a class="change-link" onclick="goTo('input')">Re-run AI</a>
+    </div>
+
+    <!-- ---------- BRIEF FIELDS ---------- -->
+    <div id="fieldsBrief" style="display:none">
+      <div class="section-label">Client &amp; Project</div>
+      <label>Project title</label>
+      <input type="text" id="brief_title" oninput="setField('brief','title',this.value)">
+      <label>One-line project summary</label>
+      <textarea id="brief_tagline" oninput="setField('brief','tagline',this.value)"></textarea>
+      <label>Geographic coverage</label>
+      <input type="text" id="brief_geo" oninput="setField('brief','geo',this.value)">
+
+      <div class="section-label">Project Objectives</div>
+      <div class="row-list" id="brief_objectivesList"></div>
+      <button class="add-btn" onclick="addStrRow('brief','objectives')">+ Add objective</button>
+
+      <div class="section-label">Target Respondents</div>
+      <textarea id="brief_respondents" style="min-height:80px" oninput="setField('brief','respondents',this.value)"></textarea>
+
+      <div class="section-label">Methodology &amp; Quality Control</div>
+      <div class="row-list" id="brief_methodList"></div>
+      <button class="add-btn" onclick="addStrRow('brief','method')">+ Add methodology point</button>
+
+      <div class="section-label">Indicative Cost Range</div>
+      <textarea id="brief_costRangeText" oninput="setField('brief','costRangeText',this.value)"></textarea>
+
+      <div class="section-label">Deliverables</div>
+      <div class="row-list" id="brief_deliverList"></div>
+      <button class="add-btn" onclick="addStrRow('brief','deliver')">+ Add deliverable</button>
+
+      <div class="section-label">Next Steps</div>
+      <div class="row-list" id="brief_nextStepsList"></div>
+      <button class="add-btn" onclick="addStrRow('brief','nextSteps')">+ Add next step</button>
+    </div>
+
+    <!-- ---------- QUOTE FIELDS ---------- -->
+    <div id="fieldsQuote" style="display:none">
+      <div class="section-label">Client &amp; Project</div>
+      <label>Project title</label>
+      <input type="text" id="quote_title" oninput="setField('quote','title',this.value)">
+      <label>One-line project summary</label>
+      <textarea id="quote_tagline" oninput="setField('quote','tagline',this.value)"></textarea>
+      <label>Geographic coverage</label>
+      <input type="text" id="quote_geo" oninput="setField('quote','geo',this.value)">
+
+      <div class="section-label">Specific Objectives</div>
+      <div class="row-list" id="quote_objectivesList"></div>
+      <button class="add-btn" onclick="addStrRow('quote','objectives')">+ Add objective</button>
+
+      <div class="section-label">Cost Summary</div>
+      <div id="quote_costItemsList"></div>
+      <button class="add-btn" onclick="addObjRow('quote','costItems')">+ Add line item</button>
+      <label style="margin-top:10px">Tax rate (%)</label>
+      <input type="number" id="quote_taxRate" step="0.1" oninput="setField('quote','taxRate',parseFloat(this.value)||0)">
+
+      <div class="section-label">Implementation Timeline</div>
+      <div id="quote_milestonesList"></div>
+      <button class="add-btn" onclick="addObjRow('quote','milestones')">+ Add milestone</button>
+
+      <div class="section-label">Next Steps</div>
+      <div class="row-list" id="quote_nextStepsList"></div>
+      <button class="add-btn" onclick="addStrRow('quote','nextSteps')">+ Add next step</button>
+    </div>
+
+    <!-- ---------- INVOICE FIELDS ---------- -->
+    <div id="fieldsInvoice" style="display:none">
+      <div class="section-label">Invoice Details</div>
+      <div class="two-col">
+        <div><label>Invoice No.</label><input type="text" id="invoice_invNo" placeholder="WC13081" oninput="setField('invoice','invNo',this.value)"></div>
+        <div><label>Date</label><input type="text" id="invoice_invDate" placeholder="12.08.2026" oninput="setField('invoice','invDate',this.value)"></div>
+      </div>
+
+      <div class="section-label">Billed To</div>
+      <label>Contact name</label>
+      <input type="text" id="invoice_billName" oninput="setField('invoice','billName',this.value)">
+      <label>Company / Organization</label>
+      <input type="text" id="invoice_billCompany" oninput="setField('invoice','billCompany',this.value)">
+
+      <div class="section-label">Project Description</div>
+      <textarea id="invoice_invDesc" style="min-height:70px" oninput="setField('invoice','invDesc',this.value)"></textarea>
+
+      <div class="section-label">Line Items</div>
+      <div id="invoice_itemsList"></div>
+      <button class="add-btn" onclick="addObjRow('invoice','items')">+ Add line item</button>
+
+      <div class="section-label">Tax &amp; Deposit</div>
+      <div class="two-col">
+        <div><label>Tax rate (%)</label><input type="number" id="invoice_taxRate" step="0.1" oninput="setField('invoice','taxRate',parseFloat(this.value)||0)"></div>
+        <div><label>&nbsp;</label>
+          <div class="check-row" style="margin-top:9px">
+            <input type="checkbox" id="invoice_vatExempt" onchange="setField('invoice','vatExempt',this.checked)">
+            <label for="invoice_vatExempt" style="font-weight:500">VAT-exempt</label>
+          </div>
+        </div>
+      </div>
+      <input type="text" id="invoice_vatExemptNote" placeholder="e.g. NB: IITA is exempted from VAT" oninput="setField('invoice','vatExemptNote',this.value)" style="margin-top:6px">
+
+      <div class="check-row">
+        <input type="checkbox" id="invoice_depositEnabled" onchange="setField('invoice','depositEnabled',this.checked); toggleDepositUI();">
+        <label for="invoice_depositEnabled">Require a deposit</label>
+      </div>
+      <div id="depositFields" style="display:none">
+        <label>Deposit (% of total)</label>
+        <input type="number" id="invoice_depositPercent" oninput="setField('invoice','depositPercent',parseFloat(this.value)||0)">
+      </div>
+
+      <div class="section-label">Payment Details</div>
+      <div id="invoice_paymentsList"></div>
+      <button class="add-btn" onclick="addObjRow('invoice','payments')">+ Add payment option</button>
+
+      <label style="margin-top:14px">Additional notes (optional)</label>
+      <textarea id="invoice_notes" oninput="setField('invoice','notes',this.value)"></textarea>
+    </div>
+
+    <!-- ---------- PROPOSAL FIELDS ---------- -->
+    <div id="fieldsProposal" style="display:none">
+      <div class="section-label">Cover</div>
+      <label>Project title</label>
+      <input type="text" id="proposal_title" oninput="setField('proposal','title',this.value)">
+      <label>Prepared for (org)</label>
+      <input type="text" id="proposal_org" oninput="setField('proposal','org',this.value)">
+      <label>Subtitle (optional)</label>
+      <input type="text" id="proposal_subtitle" oninput="setField('proposal','subtitle',this.value)">
+
+      <div class="section-label">Executive Summary</div>
+      <textarea id="proposal_execSummary" style="min-height:100px" oninput="setField('proposal','execSummary',this.value)"></textarea>
+
+      <div class="section-label">Project Objectives</div>
+      <div id="proposal_objectivesList"></div>
+      <button class="add-btn" onclick="addObjRow('proposal','objectives')">+ Add objective</button>
+
+      <div class="section-label">Project Scope</div>
+      <textarea id="proposal_scope" style="min-height:90px" oninput="setField('proposal','scope',this.value)"></textarea>
+
+      <div class="section-label">Methodology</div>
+      <div id="proposal_methodologyList"></div>
+      <button class="add-btn" onclick="addObjRow('proposal','methodology')">+ Add methodology component</button>
+
+      <div class="section-label">Technology</div>
+      <div id="proposal_technologyList"></div>
+      <button class="add-btn" onclick="addObjRow('proposal','technology')">+ Add technology component</button>
+
+      <div class="section-label">Implementation Plan</div>
+      <div id="proposal_phasesList"></div>
+      <button class="add-btn" onclick="addObjRow('proposal','phases')">+ Add phase</button>
+
+      <div class="section-label">Deliverables</div>
+      <div id="proposal_deliverablesList"></div>
+      <button class="add-btn" onclick="addObjRow('proposal','deliverables')">+ Add deliverable category</button>
+
+      <div class="section-label">Next Steps</div>
+      <div class="row-list" id="proposal_nextStepsList"></div>
+      <button class="add-btn" onclick="addStrRow('proposal','nextSteps')">+ Add next step</button>
+    </div>
+
+    <div class="actions">
+      <button class="btn-primary" onclick="downloadWord()">⬇ Download as Word (.docx)</button>
+      <button class="btn-secondary" onclick="window.print()">🖨 Download as PDF (Print)</button>
+      <div class="hint">PDF: choose "Save as PDF" in the print dialog. Word downloads as an editable .docx file.</div>
+    </div>
+  </div>
+
+  <div class="preview-wrap">
+    <div class="page" id="previewPage"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   STATE
+========================================================= */
+let currentMode = 'brief';
+let inputTab = 'paste';
+let uploadedFileText = "";
+
+const TPL_NAMES = { brief:"Project Brief", quote:"Detailed Quote", invoice:"Client Invoice", proposal:"Full Proposal Deck" };
+
+function freshState(){
+  return {
+    brief: { title:"", tagline:"", geo:"", objectives:[""], respondents:"", method:[""], costRangeText:"", deliver:[""], nextSteps:[""] },
+    quote: { title:"", tagline:"", geo:"", objectives:[""], costItems:[{activity:"",budget:"",desc:""}], taxRate:7.5, milestones:[{phase:"",duration:"",desc:""}], nextSteps:[""] },
+    invoice: { invNo:"", invDate:"", billName:"", billCompany:"", invDesc:"", items:[{item:"",units:"1",cost:""}], taxRate:7.5, vatExempt:false, vatExemptNote:"", depositEnabled:false, depositPercent:50, payments:[{bank:"",acctName:"WeCollect Data Gathering LTD",acctNumber:""}], notes:"" },
+    proposal: { title:"", org:"", subtitle:"", execSummary:"", objectives:[{title:"",desc:""}], scope:"", methodology:[{title:"",desc:""}], technology:[{title:"",desc:""}], phases:[{phase:"Phase 1",title:"",desc:""}], deliverables:[{category:"",desc:""}], nextSteps:[""] }
+  };
+}
+let state = freshState();
+
+/* config for object-array (multi-field) row lists: mode.key -> field defs */
+const OBJ_CONFIG = {
+  'quote.costItems':   [{k:'activity',ph:'Activity / Cost category',type:'input'},{k:'budget',ph:'Budget e.g. ₦500,000',type:'input'},{k:'desc',ph:'Description',type:'textarea'}],
+  'quote.milestones':  [{k:'phase',ph:'Phase e.g. Field Mapping',type:'input'},{k:'duration',ph:'Duration e.g. Week 3-4',type:'input'},{k:'desc',ph:'Key activity description',type:'textarea'}],
+  'invoice.items':     [{k:'item',ph:'Item / description',type:'textarea'},{k:'units',ph:'Units',type:'input'},{k:'cost',ph:'Cost/unit ₦',type:'input'}],
+  'invoice.payments':  [{k:'bank',ph:'Bank name',type:'input'},{k:'acctNumber',ph:'Account number',type:'input'},{k:'acctName',ph:'Account name',type:'input'}],
+  'proposal.objectives':   [{k:'title',ph:'Objective title',type:'input'},{k:'desc',ph:'Description',type:'textarea'}],
+  'proposal.methodology':  [{k:'title',ph:'Component title',type:'input'},{k:'desc',ph:'Description',type:'textarea'}],
+  'proposal.technology':   [{k:'title',ph:'Technology component',type:'input'},{k:'desc',ph:'Description',type:'textarea'}],
+  'proposal.phases':       [{k:'phase',ph:'Phase label e.g. Phase 1',type:'input'},{k:'title',ph:'Phase title',type:'input'},{k:'desc',ph:'Key activities',type:'textarea'}],
+  'proposal.deliverables': [{k:'category',ph:'Category e.g. Databases',type:'input'},{k:'desc',ph:'Description',type:'textarea'}]
+};
+const ROW_LIST_EL = {
+  'quote.costItems':'quote_costItemsList', 'quote.milestones':'quote_milestonesList',
+  'invoice.items':'invoice_itemsList', 'invoice.payments':'invoice_paymentsList',
+  'proposal.objectives':'proposal_objectivesList', 'proposal.methodology':'proposal_methodologyList',
+  'proposal.technology':'proposal_technologyList', 'proposal.phases':'proposal_phasesList',
+  'proposal.deliverables':'proposal_deliverablesList'
+};
+const STR_LIST_EL = {
+  'brief.objectives':'brief_objectivesList', 'brief.method':'brief_methodList', 'brief.deliver':'brief_deliverList', 'brief.nextSteps':'brief_nextStepsList',
+  'quote.objectives':'quote_objectivesList', 'quote.nextSteps':'quote_nextStepsList',
+  'proposal.nextSteps':'proposal_nextStepsList'
+};
+
+/* =========================================================
+   GENERIC HELPERS
+========================================================= */
+function escapeHtml(str){ return (str||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function escapeAttr(str){ return escapeHtml(str).replace(/"/g,"&quot;"); }
+function setField(mode, field, value){ state[mode][field] = value; render(); }
+
+function addStrRow(mode, key){ state[mode][key].push(""); renderStrList(mode,key); render(); }
+function removeStrRow(mode, key, idx){ state[mode][key].splice(idx,1); renderStrList(mode,key); render(); }
+function updateStrRow(mode, key, idx, val){ state[mode][key][idx] = val; render(); }
+function renderStrList(mode, key){
+  const el = document.getElementById(STR_LIST_EL[mode+'.'+key]);
+  if(!el) return;
+  el.innerHTML = "";
+  state[mode][key].forEach((val, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'row-item';
+    row.innerHTML = `<textarea rows="2" oninput="updateStrRow('${mode}','${key}',${idx},this.value)">${escapeHtml(val)}</textarea>
+      <button class="icon-btn" onclick="removeStrRow('${mode}','${key}',${idx})">✕</button>`;
+    el.appendChild(row);
+  });
+}
+
+function addObjRow(mode, key){
+  const template = {};
+  OBJ_CONFIG[mode+'.'+key].forEach(f=> template[f.k] = (f.k==='acctName' ? 'WeCollect Data Gathering LTD' : ''));
+  state[mode][key].push(template);
+  renderObjList(mode,key); render();
+}
+function removeObjRow(mode, key, idx){ state[mode][key].splice(idx,1); renderObjList(mode,key); render(); }
+function updateObjRow(mode, key, idx, field, val){ state[mode][key][idx][field] = val; render(); }
+function renderObjList(mode, key){
+  const el = document.getElementById(ROW_LIST_EL[mode+'.'+key]);
+  if(!el) return;
+  const cfg = OBJ_CONFIG[mode+'.'+key];
+  el.innerHTML = "";
+  state[mode][key].forEach((row, idx)=>{
+    const div = document.createElement('div');
+    div.className = 'obj-row';
+    const inputFields = cfg.filter(f=>f.type==='input');
+    const textFields = cfg.filter(f=>f.type==='textarea');
+    let topHtml = '<div class="obj-row-top">';
+    inputFields.forEach(f=>{
+      topHtml += `<input type="text" placeholder="${escapeAttr(f.ph)}" value="${escapeAttr(row[f.k])}" oninput="updateObjRow('${mode}','${key}',${idx},'${f.k}',this.value)">`;
+    });
+    topHtml += `<button class="icon-btn" onclick="removeObjRow('${mode}','${key}',${idx})">✕</button></div>`;
+    let taHtml = '';
+    textFields.forEach(f=>{
+      taHtml += `<textarea rows="2" placeholder="${escapeAttr(f.ph)}" oninput="updateObjRow('${mode}','${key}',${idx},'${f.k}',this.value)">${escapeHtml(row[f.k])}</textarea>`;
+    });
+    div.innerHTML = topHtml + taHtml;
+    el.appendChild(div);
+  });
+}
+
+function toggleDepositUI(){
+  document.getElementById('depositFields').style.display = state.invoice.depositEnabled ? 'block' : 'none';
+  render();
+}
+
+function parseMoney(str){ const n = parseFloat((str||"").toString().replace(/[^\d.]/g,"")); return isNaN(n)?0:n; }
+function formatMoney(n){ return "₦" + n.toLocaleString('en-NG',{maximumFractionDigits:2}); }
+
+/* =========================================================
+   SCREEN NAVIGATION
+========================================================= */
+function goTo(screen){
+  document.getElementById('screenSelect').style.display = screen==='select' ? 'flex' : 'none';
+  document.getElementById('screenInput').style.display = screen==='input' ? 'flex' : 'none';
+  document.getElementById('screenEdit').style.display = screen==='edit' ? 'grid' : 'none';
+  window.scrollTo(0,0);
+}
+
+function selectTemplate(mode){
+  currentMode = mode;
+  document.getElementById('inputTitle').textContent = "Describe the project — " + TPL_NAMES[mode];
+  document.getElementById('aiError').style.display = 'none';
+  document.getElementById('pasteText').value = "";
+  uploadedFileText = "";
+  document.getElementById('dropZone').classList.remove('hasfile');
+  document.getElementById('dropZone').innerHTML = `📎 Upload a .txt or .docx file (notes, a past brief, an RFP)<br><input type="file" id="fileInput" accept=".txt,.docx" onchange="handleFile(this.files[0])">`;
+  setInputTab('paste');
+  goTo('input');
+}
+
+function setInputTab(tab){
+  inputTab = tab;
+  document.getElementById('tabPaste').classList.toggle('active', tab==='paste');
+  document.getElementById('tabUpload').classList.toggle('active', tab==='upload');
+  document.getElementById('pasteTab').style.display = tab==='paste' ? 'block' : 'none';
+  document.getElementById('uploadTab').style.display = tab==='upload' ? 'block' : 'none';
+}
+
+async function handleFile(file){
+  if(!file) return;
+  const zone = document.getElementById('dropZone');
+  try{
+    if(file.name.toLowerCase().endsWith('.docx')){
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({arrayBuffer});
+      uploadedFileText = result.value || "";
+    } else {
+      uploadedFileText = await file.text();
+    }
+    zone.classList.add('hasfile');
+    zone.innerHTML = `✅ Loaded "${escapeHtml(file.name)}" (${uploadedFileText.length.toLocaleString()} characters)<br><input type="file" id="fileInput" accept=".txt,.docx" onchange="handleFile(this.files[0])">`;
+  }catch(err){
+    zone.innerHTML = `⚠️ Couldn't read that file. Try a .txt file, or paste the text instead.<br><input type="file" id="fileInput" accept=".txt,.docx" onchange="handleFile(this.files[0])">`;
+  }
+}
+
+function skipAI(){
+  state[currentMode] = freshState()[currentMode];
+  enterEditScreen();
+}
+
+/* =========================================================
+   AI GENERATION
+========================================================= */
+const SCHEMA_INSTRUCTIONS = {
+  brief: `Return ONLY a JSON object with exactly these keys:
+{
+ "title": string (project title),
+ "tagline": string (one sentence summarizing the project's aim),
+ "geo": string (geographic coverage, comma separated, empty string if not mentioned),
+ "objectives": string[] (3-6 objectives, each "Bold Label: one sentence explanation" style),
+ "respondents": string (description of target respondent groups, sample sizes if stated),
+ "method": string[] (3-5 methodology / quality-control bullet points, mention geo-tagging, timestamping, real-time quality assurance and the WeCollect app where relevant),
+ "costRangeText": string (indicative cost per interview/respondent ONLY if a figure is explicitly given in the source text; otherwise empty string — never invent a number),
+ "deliver": string[] (1-3 deliverables, e.g. cleaned dataset),
+ "nextSteps": string[] (3-5 next steps, typical WeCollect next steps are: review and sign ToR, review and finalize questionnaire, approve timeline and budget, commence field deployment)
+}`,
+  quote: `Return ONLY a JSON object with exactly these keys:
+{
+ "title": string (project title),
+ "tagline": string (one sentence summarizing the project's aim),
+ "geo": string (geographic coverage, empty string if not mentioned),
+ "objectives": string[] (3-6 specific objectives),
+ "costItems": [{"activity": string (cost category e.g. "Field Enumeration & Profiling"), "budget": string (a Naira figure like "₦500,000" ONLY if explicitly stated in the source text, otherwise empty string — never invent a number), "desc": string (short description of what this covers)}] (list every distinct cost category mentioned, otherwise a reasonable set of standard categories: Baseline Mapping, Field Enumeration & Profiling, Project Management & Supervision, Data Visualization & Reporting, Contingency, each with empty budget if not stated),
+ "taxRate": number (default 7.5 unless stated otherwise),
+ "milestones": [{"phase": string (e.g. "Set up and Mobilization"), "duration": string (e.g. "Week 1-2", empty string if not stated), "desc": string (key activities in this phase)}] (3-5 phases),
+ "nextSteps": string[] (3-5 next steps)
+}`,
+  invoice: `Return ONLY a JSON object with exactly these keys:
+{
+ "invDate": string (date if mentioned, else empty string),
+ "billName": string (contact person name),
+ "billCompany": string (company/organization name),
+ "invDesc": string (one to two sentence project description),
+ "items": [{"item": string (line item description), "units": string (quantity, e.g. "1" or "5000"), "cost": string (cost PER UNIT in Naira, ONLY if explicitly stated or calculable from a stated total ÷ units; otherwise empty string — never invent a figure)}],
+ "vatExempt": boolean (true only if source text explicitly says the client is VAT exempt),
+ "vatExemptNote": string (e.g. "NB: [Org] is exempted from VAT" if vatExempt is true, else empty string),
+ "depositPercent": number|null (percentage if a deposit/upfront payment is explicitly mentioned, else null),
+ "notes": string (any special payment instructions mentioned, else empty string)
+}`,
+  proposal: `Return ONLY a JSON object with exactly these keys:
+{
+ "title": string (proposal title),
+ "org": string (the client organization this is prepared for),
+ "subtitle": string (a case-study qualifier if relevant, e.g. "A Bayelsa and Delta States Case Study", else empty string),
+ "execSummary": string (2-4 sentence executive summary paragraph),
+ "objectives": [{"title": string (short objective name), "desc": string (1-2 sentence explanation)}] (3-6 objectives),
+ "scope": string (1-3 sentence paragraph describing what the project covers geographically and thematically),
+ "methodology": [{"title": string (methodology component name), "desc": string (1-2 sentences)}] (3-5 components),
+ "technology": [{"title": string (technology/tool component name), "desc": string (1-2 sentences)}] (2-4 components, mention mobile data collection, GIS/geospatial tools, dashboards where relevant),
+ "phases": [{"phase": string (e.g. "Phase 1"), "title": string (phase name e.g. "Planning and System Design"), "desc": string (1-2 sentence description of key activities)}] (4-6 phases),
+ "deliverables": [{"category": string (e.g. "Databases", "Reports", "Maps", "Dashboard"), "desc": string (1-2 sentences on what's included)}] (3-5 categories),
+ "nextSteps": string[] (4-7 next steps)
+}`
+};
+
+function buildPrompt(mode, sourceText){
+  return `You are a data-extraction assistant for WeCollect, a Nigerian data-gathering infrastructure company (field data collection, geo-verification, quality control for research and market studies).
+
+A WeCollect team member has pasted raw notes describing a project. Extract and structure the relevant details into the JSON schema below for a "${TPL_NAMES[mode]}" document.
+
+CRITICAL RULES:
+- Respond with ONLY the JSON object. No markdown code fences, no explanation before or after.
+- Only include specific numbers (costs, budgets, sample sizes, percentages, dates) if they are explicitly stated or directly calculable from the source text. If a number is not stated, use an empty string ("") or null — never invent, estimate, or guess a figure.
+- Keep each text field concise (1-2 sentences) since output length is limited.
+- If the source text is sparse, still produce a complete, well-structured JSON using sensible generic WeCollect-style section content for fields with no source information, but leave all numeric/monetary fields empty rather than fabricated.
+
+${SCHEMA_INSTRUCTIONS[mode]}
+
+SOURCE TEXT:
+"""
+${sourceText.slice(0, 6000)}
+"""`;
+}
+
+function stripCodeFences(text){
+  let t = text.trim();
+  t = t.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/,'');
+  return t.trim();
+}
+function asArray(x){ return Array.isArray(x) ? x : []; }
+function asStr(x){ return (typeof x === 'string') ? x : (x==null ? "" : String(x)); }
+function asNum(x, fallback){ const n = Number(x); return isNaN(n) ? fallback : n; }
+function asBool(x){ return x === true; }
+
+function normalize(mode, obj){
+  const f = freshState()[mode];
+  if(mode==='brief'){
+    return {
+      title: asStr(obj.title)||f.title, tagline: asStr(obj.tagline), geo: asStr(obj.geo),
+      objectives: asArray(obj.objectives).map(asStr).filter(Boolean).length ? asArray(obj.objectives).map(asStr) : f.objectives,
+      respondents: asStr(obj.respondents), method: asArray(obj.method).map(asStr).filter(Boolean).length ? asArray(obj.method).map(asStr) : f.method,
+      costRangeText: asStr(obj.costRangeText),
+      deliver: asArray(obj.deliver).map(asStr).filter(Boolean).length ? asArray(obj.deliver).map(asStr) : f.deliver,
+      nextSteps: asArray(obj.nextSteps).map(asStr).filter(Boolean).length ? asArray(obj.nextSteps).map(asStr) : f.nextSteps
+    };
+  }
+  if(mode==='quote'){
+    return {
+      title: asStr(obj.title)||f.title, tagline: asStr(obj.tagline), geo: asStr(obj.geo),
+      objectives: asArray(obj.objectives).map(asStr).filter(Boolean).length ? asArray(obj.objectives).map(asStr) : f.objectives,
+      costItems: asArray(obj.costItems).map(r=>({activity:asStr(r.activity),budget:asStr(r.budget),desc:asStr(r.desc)})),
+      taxRate: asNum(obj.taxRate, 7.5),
+      milestones: asArray(obj.milestones).map(r=>({phase:asStr(r.phase),duration:asStr(r.duration),desc:asStr(r.desc)})),
+      nextSteps: asArray(obj.nextSteps).map(asStr).filter(Boolean).length ? asArray(obj.nextSteps).map(asStr) : f.nextSteps
+    };
+  }
+  if(mode==='invoice'){
+    return {
+      invNo:"", invDate: asStr(obj.invDate), billName: asStr(obj.billName), billCompany: asStr(obj.billCompany),
+      invDesc: asStr(obj.invDesc),
+      items: asArray(obj.items).map(r=>({item:asStr(r.item),units:asStr(r.units)||"1",cost:asStr(r.cost)})),
+      taxRate: 7.5, vatExempt: asBool(obj.vatExempt), vatExemptNote: asStr(obj.vatExemptNote),
+      depositEnabled: obj.depositPercent!=null && obj.depositPercent!=="", depositPercent: asNum(obj.depositPercent, 50),
+      payments: f.payments, notes: asStr(obj.notes)
+    };
+  }
+  if(mode==='proposal'){
+    return {
+      title: asStr(obj.title)||f.title, org: asStr(obj.org), subtitle: asStr(obj.subtitle),
+      execSummary: asStr(obj.execSummary),
+      objectives: asArray(obj.objectives).map(r=>({title:asStr(r.title),desc:asStr(r.desc)})),
+      scope: asStr(obj.scope),
+      methodology: asArray(obj.methodology).map(r=>({title:asStr(r.title),desc:asStr(r.desc)})),
+      technology: asArray(obj.technology).map(r=>({title:asStr(r.title),desc:asStr(r.desc)})),
+      phases: asArray(obj.phases).map(r=>({phase:asStr(r.phase),title:asStr(r.title),desc:asStr(r.desc)})),
+      deliverables: asArray(obj.deliverables).map(r=>({category:asStr(r.category),desc:asStr(r.desc)})),
+      nextSteps: asArray(obj.nextSteps).map(asStr).filter(Boolean).length ? asArray(obj.nextSteps).map(asStr) : f.nextSteps
+    };
+  }
+}
+
+function getPasscode(){
+  let code = localStorage.getItem('wc_passcode');
+  if(!code){
+    code = window.prompt("Enter your team access code for this tool:\n(Ask whoever set it up in Vercel if you don't have it.)");
+    if(code) localStorage.setItem('wc_passcode', code.trim());
+  }
+  return (code||"").trim();
+}
+function clearPasscode(){ localStorage.removeItem('wc_passcode'); }
+
+async function generateWithAI(){
+  const sourceText = inputTab === 'paste' ? document.getElementById('pasteText').value.trim() : uploadedFileText.trim();
+  if(!sourceText){
+    showAiError("Please paste some text or upload a file first.");
+    return;
+  }
+  document.getElementById('aiError').style.display = 'none';
+  document.getElementById('aiStatus').style.display = 'flex';
+  document.querySelector('.gen-btn').disabled = true;
+
+  try{
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-app-passcode": getPasscode()
+      },
+      body: JSON.stringify({ prompt: buildPrompt(currentMode, sourceText) })
+    });
+    const data = await response.json();
+
+    if(!response.ok){
+      if(response.status === 401) clearPasscode();
+      throw new Error(data.error || ("Request failed with status " + response.status));
+    }
+
+    const textBlocks = (data.content || []).filter(b=>b.type==='text').map(b=>b.text).join("\n");
+    if(!textBlocks) throw new Error("Empty response from AI.");
+    const cleaned = stripCodeFences(textBlocks);
+    const parsed = JSON.parse(cleaned);
+    state[currentMode] = normalize(currentMode, parsed);
+    enterEditScreen();
+  }catch(err){
+    showAiError("Something went wrong reading that input (" + err.message + "). You can try again, or start with a blank template and fill it in manually.");
+  }finally{
+    document.getElementById('aiStatus').style.display = 'none';
+    document.querySelector('.gen-btn').disabled = false;
+  }
+}
+function showAiError(msg){
+  const el = document.getElementById('aiError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+/* =========================================================
+   ENTER EDIT SCREEN — populate form fields from state
+========================================================= */
+function enterEditScreen(){
+  document.getElementById('tplBadge').textContent = TPL_NAMES[currentMode];
+  ['fieldsBrief','fieldsQuote','fieldsInvoice','fieldsProposal'].forEach(id=> document.getElementById(id).style.display='none');
+  const map = {brief:'fieldsBrief', quote:'fieldsQuote', invoice:'fieldsInvoice', proposal:'fieldsProposal'};
+  document.getElementById(map[currentMode]).style.display = 'block';
+
+  if(currentMode==='brief'){
+    document.getElementById('brief_title').value = state.brief.title;
+    document.getElementById('brief_tagline').value = state.brief.tagline;
+    document.getElementById('brief_geo').value = state.brief.geo;
+    document.getElementById('brief_respondents').value = state.brief.respondents;
+    document.getElementById('brief_costRangeText').value = state.brief.costRangeText;
+    renderStrList('brief','objectives'); renderStrList('brief','method'); renderStrList('brief','deliver'); renderStrList('brief','nextSteps');
+  }
+  if(currentMode==='quote'){
+    document.getElementById('quote_title').value = state.quote.title;
+    document.getElementById('quote_tagline').value = state.quote.tagline;
+    document.getElementById('quote_geo').value = state.quote.geo;
+    document.getElementById('quote_taxRate').value = state.quote.taxRate;
+    renderStrList('quote','objectives'); renderStrList('quote','nextSteps');
+    renderObjList('quote','costItems'); renderObjList('quote','milestones');
+  }
+  if(currentMode==='invoice'){
+    document.getElementById('invoice_invNo').value = state.invoice.invNo;
+    document.getElementById('invoice_invDate').value = state.invoice.invDate;
+    document.getElementById('invoice_billName').value = state.invoice.billName;
+    document.getElementById('invoice_billCompany').value = state.invoice.billCompany;
+    document.getElementById('invoice_invDesc').value = state.invoice.invDesc;
+    document.getElementById('invoice_taxRate').value = state.invoice.taxRate;
+    document.getElementById('invoice_vatExempt').checked = state.invoice.vatExempt;
+    document.getElementById('invoice_vatExemptNote').value = state.invoice.vatExemptNote;
+    document.getElementById('invoice_depositEnabled').checked = state.invoice.depositEnabled;
+    document.getElementById('invoice_depositPercent').value = state.invoice.depositPercent;
+    toggleDepositUI();
+    renderObjList('invoice','items'); renderObjList('invoice','payments');
+  }
+  if(currentMode==='proposal'){
+    document.getElementById('proposal_title').value = state.proposal.title;
+    document.getElementById('proposal_org').value = state.proposal.org;
+    document.getElementById('proposal_subtitle').value = state.proposal.subtitle;
+    document.getElementById('proposal_execSummary').value = state.proposal.execSummary;
+    document.getElementById('proposal_scope').value = state.proposal.scope;
+    renderStrList('proposal','nextSteps');
+    renderObjList('proposal','objectives'); renderObjList('proposal','methodology');
+    renderObjList('proposal','technology'); renderObjList('proposal','phases'); renderObjList('proposal','deliverables');
+  }
+
+  goTo('edit');
+  render();
+}
+
+/* =========================================================
+   PREVIEW RENDER
+========================================================= */
+function render(){
+  if(currentMode==='brief') renderBrief();
+  else if(currentMode==='quote') renderQuote();
+  else if(currentMode==='invoice') renderInvoice();
+  else if(currentMode==='proposal') renderProposal();
+}
+
+function renderBrief(){
+  const s = state.brief;
+  const html = `
+    <div class="p-header">
+      <h1>${escapeHtml(s.title||"Untitled Project")}</h1>
+      <p>${escapeHtml(s.tagline||"Add a one-line summary of what this project aims to achieve.")}</p>
+      ${s.geo ? `<div class="geo">📍 Geographic Coverage: ${escapeHtml(s.geo)}</div>` : ""}
+    </div>
+    <div class="p-body">
+      <div class="cols">
+        <div>
+          <h2>Project Objectives</h2>
+          <ol>${s.objectives.map(o=>`<li>${escapeHtml(o)}</li>`).join("")}</ol>
+          <h2>Methodology &amp; Quality Control</h2>
+          <ul>${s.method.map(m=>`<li>${escapeHtml(m)}</li>`).join("")}</ul>
+        </div>
+        <div>
+          <h2>Target Respondents</h2>
+          <p style="white-space:pre-line">${escapeHtml(s.respondents)}</p>
+          <h2>Indicative Cost Range</h2>
+          <p style="white-space:pre-line">${escapeHtml(s.costRangeText)}</p>
+          <div class="disclaimer">Final pricing will be confirmed after questionnaire review and specific location deployment planning.</div>
+        </div>
+      </div>
+      <h2>Deliverables</h2>
+      <ul>${s.deliver.map(d=>`<li>${escapeHtml(d)}</li>`).join("")}</ul>
+      <h2>Next Steps</h2>
+      <ol>${s.nextSteps.map(n=>`<li>${escapeHtml(n)}</li>`).join("")}</ol>
+    </div>
+    <div class="p-footer">
+      <div class="logo"><span class="we">we</span><span class="collect">collect</span></div>
+      <div class="addr">www.wecollect.tech<br>D207 &amp; D208 Ikota Complex, Lekki VGC</div>
+    </div>`;
+  document.getElementById('previewPage').innerHTML = html;
+}
+
+function computeQuoteTotals(){
+  const subtotal = state.quote.costItems.reduce((sum,r)=> sum + parseMoney(r.budget), 0);
+  const tax = subtotal * (state.quote.taxRate/100);
+  return { subtotal, tax, total: subtotal+tax };
+}
+function renderQuote(){
+  const s = state.quote; const t = computeQuoteTotals();
+  const html = `
+    <div class="p-header">
+      <h1>${escapeHtml(s.title||"Untitled Project")}</h1>
+      <p>${escapeHtml(s.tagline||"Add a one-line summary of what this project aims to achieve.")}</p>
+      ${s.geo ? `<div class="geo">📍 Geographic Coverage: ${escapeHtml(s.geo)}</div>` : ""}
+    </div>
+    <div class="p-body">
+      <h2>Specific Objectives</h2>
+      <ul>${s.objectives.map(o=>`<li>${escapeHtml(o)}</li>`).join("")}</ul>
+
+      <h2>Cost Summary</h2>
+      <table>
+        <tr><th>Activity / Cost Category</th><th>Budget</th><th>Description</th></tr>
+        ${s.costItems.map(r=>`<tr><td>${escapeHtml(r.activity)}</td><td>${escapeHtml(r.budget)}</td><td>${escapeHtml(r.desc)}</td></tr>`).join("")}
+        <tr><td>Sub-Total</td><td>${formatMoney(t.subtotal)}</td><td></td></tr>
+        <tr><td>Tax (${s.taxRate}%)</td><td>${formatMoney(t.tax)}</td><td></td></tr>
+        <tr class="total-row"><td>Total</td><td>${formatMoney(t.total)}</td><td></td></tr>
+      </table>
+      <div class="disclaimer">Final pricing will be confirmed after questionnaire review and specific location deployment planning.</div>
+
+      <h2>Implementation Timeline</h2>
+      <table>
+        <tr><th>Phase</th><th>Duration</th><th>Key Activities</th></tr>
+        ${s.milestones.map(r=>`<tr><td>${escapeHtml(r.phase)}</td><td>${escapeHtml(r.duration)}</td><td>${escapeHtml(r.desc)}</td></tr>`).join("")}
+      </table>
+
+      <h2>Next Steps</h2>
+      <ol>${s.nextSteps.map(n=>`<li>${escapeHtml(n)}</li>`).join("")}</ol>
+    </div>
+    <div class="p-footer">
+      <div class="logo"><span class="we">we</span><span class="collect">collect</span></div>
+      <div class="addr">www.wecollect.tech<br>D207 &amp; D208 Ikota Complex, Lekki VGC</div>
+    </div>`;
+  document.getElementById('previewPage').innerHTML = html;
+}
+
+function computeInvoiceTotals(){
+  const s = state.invoice;
+  const lineTotals = s.items.map(r=> parseMoney(r.units) * parseMoney(r.cost));
+  const subtotal = lineTotals.reduce((a,b)=>a+b,0);
+  const taxRate = s.vatExempt ? 0 : s.taxRate;
+  const tax = subtotal * (taxRate/100);
+  const total = subtotal + tax;
+  const deposit = s.depositEnabled ? total * (s.depositPercent/100) : 0;
+  const balance = total - deposit;
+  return { lineTotals, subtotal, taxRate, tax, total, deposit, balance };
+}
+function renderInvoice(){
+  const s = state.invoice; const t = computeInvoiceTotals();
+  let itemsHtml = "";
+  s.items.forEach((row, idx)=>{
+    itemsHtml += `<tr><td>${idx+1}</td><td>${escapeHtml(row.item)}</td><td class="num">${escapeHtml(row.units)}</td><td class="num">${escapeHtml(row.cost)}</td><td class="num">${formatMoney(t.lineTotals[idx])}</td></tr>`;
+  });
+  let paymentHtml = "";
+  s.payments.forEach(p=>{ paymentHtml += `<div class="opt"><b>${escapeHtml(p.bank)}</b><br>${escapeHtml(p.acctName)}<br>${escapeHtml(p.acctNumber)}</div>`; });
+
+  const html = `
+    <div class="inv-page">
+      <div class="inv-top">
+        <div>
+          <div class="logo"><span class="we">we</span><span class="collect">collect</span></div>
+          <div class="tagline">Insight generation, made easy</div>
+        </div>
+        <div class="inv-meta">
+          <div class="inv-no">Invoice No: ${escapeHtml(s.invNo || 'WC00000')}</div>
+          <div>Date: ${escapeHtml(s.invDate)}</div>
+        </div>
+      </div>
+      <div class="inv-billto">
+        <div class="lbl">Billed to</div>
+        <div class="name">${escapeHtml(s.billName)}</div>
+        <div class="co">${escapeHtml(s.billCompany)}</div>
+      </div>
+      ${s.invDesc ? `<div class="inv-desc"><div class="lbl">Project Description</div>${escapeHtml(s.invDesc)}</div>` : ""}
+      <table class="inv-table">
+        <tr><th>No</th><th>Item</th><th class="num">Units</th><th class="num">Cost</th><th class="num">Total</th></tr>
+        ${itemsHtml}
+      </table>
+      <div class="inv-totals">
+        <div><span>Sub-Total</span><span>${formatMoney(t.subtotal)}</span></div>
+        <div><span>Tax (${t.taxRate}%)</span><span>${formatMoney(t.tax)}</span></div>
+        <div class="grand"><span>Total</span><span>${formatMoney(t.total)}</span></div>
+        ${s.depositEnabled ? `<div><span>Deposit Due (${s.depositPercent}%)</span><span>${formatMoney(t.deposit)}</span></div>
+        <div><span>Balance Due</span><span>${formatMoney(t.balance)}</span></div>` : ""}
+      </div>
+      ${s.vatExempt && s.vatExemptNote ? `<div class="inv-vat-note">${escapeHtml(s.vatExemptNote)}</div>` : ""}
+      <div class="inv-payment">
+        <div class="lbl">Payment to</div>
+        ${paymentHtml}
+        ${s.notes ? `<div class="inv-notes">${escapeHtml(s.notes)}</div>` : ""}
+      </div>
+      <div class="inv-thanks">THANK YOU</div>
+      <div class="inv-footer">www.wecollect.tech &nbsp;|&nbsp; D207 &amp; D208 Ikota Complex, Lekki VGC</div>
+    </div>`;
+  document.getElementById('previewPage').innerHTML = html;
+}
+
+function renderProposal(){
+  const s = state.proposal;
+  const html = `
+    <div class="p-header">
+      <div class="org">${escapeHtml(s.org ? "Proposal for "+s.org : "")}</div>
+      <h1>${escapeHtml(s.title||"Untitled Proposal")}</h1>
+      ${s.subtitle ? `<p>${escapeHtml(s.subtitle)}</p>` : ""}
+    </div>
+    <div class="p-body">
+      <h2>Executive Summary</h2>
+      <p style="white-space:pre-line">${escapeHtml(s.execSummary)}</p>
+
+      <h2>Project Objectives</h2>
+      ${s.objectives.map((o,i)=>`<div class="obj-block"><div class="t">${i+1}. ${escapeHtml(o.title)}</div><p>${escapeHtml(o.desc)}</p></div>`).join("")}
+
+      <h2>Project Scope</h2>
+      <p style="white-space:pre-line">${escapeHtml(s.scope)}</p>
+
+      <h2>Methodology</h2>
+      ${s.methodology.map(m=>`<div class="obj-block"><div class="t">${escapeHtml(m.title)}</div><p>${escapeHtml(m.desc)}</p></div>`).join("")}
+
+      <h2>Technology</h2>
+      ${s.technology.map(m=>`<div class="obj-block"><div class="t">${escapeHtml(m.title)}</div><p>${escapeHtml(m.desc)}</p></div>`).join("")}
+
+      <h2>Implementation Plan</h2>
+      ${s.phases.map(p=>`<div class="phase-block"><div class="plabel">${escapeHtml(p.phase)}</div><div class="ptitle">${escapeHtml(p.title)}</div><p>${escapeHtml(p.desc)}</p></div>`).join("")}
+
+      <h2>Deliverables</h2>
+      ${s.deliverables.map(d=>`<div class="obj-block"><div class="t">${escapeHtml(d.category)}</div><p>${escapeHtml(d.desc)}</p></div>`).join("")}
+
+      <h2>Next Steps</h2>
+      <ol>${s.nextSteps.map(n=>`<li>${escapeHtml(n)}</li>`).join("")}</ol>
+    </div>
+    <div class="p-footer">
+      <div class="logo"><span class="we">we</span><span class="collect">collect</span></div>
+      <div class="addr">www.wecollect.tech<br>D207 &amp; D208 Ikota Complex, Lekki VGC</div>
+    </div>`;
+  document.getElementById('previewPage').innerHTML = html;
+}
+
+/* =========================================================
+   WORD (.docx) EXPORT
+========================================================= */
+async function downloadWord(){
+  if(!window.docx){ alert("The Word export library is still loading. Please wait a second and try again."); return; }
+  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, ShadingType, AlignmentType } = window.docx;
+  const PURPLE="4B3FCF", PURPLE_DARK="372E9E", LIGHT="EFEDFC", RED="D64545", GRAY="6B6880";
+
+  function heading(text){ return new Paragraph({ children:[new TextRun({text,bold:true,size:26,color:PURPLE_DARK})], spacing:{before:200,after:100} }); }
+  function subheading(text){ return new Paragraph({ children:[new TextRun({text,bold:true,size:21,color:"1B1730"})], spacing:{before:120,after:40} }); }
+  function bodyText(text){ return new Paragraph({ text:text||"", spacing:{after:100} }); }
+  function bullet(text){ return new Paragraph({ text, bullet:{level:0}, spacing:{after:60} }); }
+  function numbered(text, ref){ return new Paragraph({ text, numbering:{reference:ref, level:0}, spacing:{after:60} }); }
+  function cell(text, opts={}){
+    return new TableCell({
+      children:[ new Paragraph({ alignment: opts.right?AlignmentType.RIGHT:AlignmentType.LEFT, children:[ new TextRun({text:text||"", bold:!!opts.bold, color:opts.color||"000000"}) ] }) ],
+      shading: opts.fill ? {type:ShadingType.CLEAR, fill:opts.fill} : undefined,
+      width:{ size: opts.width||20, type:WidthType.PERCENTAGE }
+    });
+  }
+  function headerBlock(title, tagline, geo){
+    const arr = [ new Paragraph({ children:[new TextRun({text:title,bold:true,size:44,color:"FFFFFF"})], shading:{type:ShadingType.CLEAR,fill:PURPLE}, spacing:{after:100,before:100} }) ];
+    if(tagline) arr.push(new Paragraph({ children:[new TextRun({text:tagline,size:22,color:"FFFFFF"})], shading:{type:ShadingType.CLEAR,fill:PURPLE}, spacing:{after:100} }));
+    if(geo) arr.push(new Paragraph({ children:[new TextRun({text:"Geographic Coverage: "+geo,bold:true,size:20,color:"FFFFFF"})], shading:{type:ShadingType.CLEAR,fill:PURPLE}, spacing:{after:200} }));
+    arr.push(new Paragraph({text:"",spacing:{after:100}}));
+    return arr;
+  }
+  function footerBlock(){
+    return [ new Paragraph({text:"",spacing:{before:300}}),
+      new Paragraph({ children:[ new TextRun({text:"wecollect",bold:true,italics:true,color:PURPLE}), new TextRun({text:"   www.wecollect.tech   |   D207 & D208 Ikota Complex, Lekki VGC",size:16,color:GRAY}) ] }) ];
+  }
+
+  const children = [];
+  const docConfig = {
+    numbering:{ config:[
+      {reference:"num-a", levels:[{level:0,format:"decimal",text:"%1.",alignment:AlignmentType.START}]},
+      {reference:"num-b", levels:[{level:0,format:"decimal",text:"%1.",alignment:AlignmentType.START}]}
+    ]},
+    sections:[]
+  };
+
+  if(currentMode==='brief'){
+    const s = state.brief;
+    children.push(...headerBlock(s.title||"Untitled Project", s.tagline, s.geo));
+    children.push(heading("Project Objectives"));
+    s.objectives.forEach(o=>children.push(numbered(o,"num-a")));
+    children.push(heading("Target Respondents"));
+    children.push(bodyText(s.respondents));
+    children.push(heading("Methodology & Quality Control"));
+    s.method.forEach(m=>children.push(bullet(m)));
+    children.push(heading("Indicative Cost Range"));
+    children.push(bodyText(s.costRangeText));
+    children.push(new Paragraph({children:[new TextRun({text:"Final pricing will be confirmed after questionnaire review and specific location deployment planning.",italics:true,color:RED,size:18})],spacing:{after:150}}));
+    children.push(heading("Deliverables"));
+    s.deliver.forEach(d=>children.push(bullet(d)));
+    children.push(heading("Next Steps"));
+    s.nextSteps.forEach(n=>children.push(numbered(n,"num-b")));
+    children.push(...footerBlock());
+  }
+
+  else if(currentMode==='quote'){
+    const s = state.quote; const t = computeQuoteTotals();
+    children.push(...headerBlock(s.title||"Untitled Project", s.tagline, s.geo));
+    children.push(heading("Specific Objectives"));
+    s.objectives.forEach(o=>children.push(bullet(o)));
+    children.push(heading("Cost Summary"));
+    const costRows=[ new TableRow({children:[cell("Activity / Cost Category",{bold:true,color:"FFFFFF",fill:PURPLE,width:40}),cell("Budget",{bold:true,color:"FFFFFF",fill:PURPLE,width:20}),cell("Description",{bold:true,color:"FFFFFF",fill:PURPLE,width:40})]}) ];
+    s.costItems.forEach(r=>costRows.push(new TableRow({children:[cell(r.activity,{width:40}),cell(r.budget,{width:20}),cell(r.desc,{width:40})]})));
+    costRows.push(new TableRow({children:[cell("Sub-Total",{bold:true,width:40}),cell(formatMoney(t.subtotal),{bold:true,width:20}),cell("",{width:40})]}));
+    costRows.push(new TableRow({children:[cell(`Tax (${s.taxRate}%)`,{bold:true,width:40}),cell(formatMoney(t.tax),{bold:true,width:20}),cell("",{width:40})]}));
+    costRows.push(new TableRow({children:[cell("Total",{bold:true,fill:LIGHT,width:40}),cell(formatMoney(t.total),{bold:true,fill:LIGHT,width:20}),cell("",{fill:LIGHT,width:40})]}));
+    children.push(new Table({rows:costRows,width:{size:100,type:WidthType.PERCENTAGE}}));
+    children.push(new Paragraph({children:[new TextRun({text:"Final pricing will be confirmed after questionnaire review and specific location deployment planning.",italics:true,color:RED,size:18})],spacing:{before:100,after:200}}));
+    children.push(heading("Implementation Timeline"));
+    const msRows=[ new TableRow({children:[cell("Phase",{bold:true,color:"FFFFFF",fill:PURPLE,width:25}),cell("Duration",{bold:true,color:"FFFFFF",fill:PURPLE,width:20}),cell("Key Activities",{bold:true,color:"FFFFFF",fill:PURPLE,width:55})]}) ];
+    s.milestones.forEach(r=>msRows.push(new TableRow({children:[cell(r.phase,{width:25}),cell(r.duration,{width:20}),cell(r.desc,{width:55})]})));
+    children.push(new Table({rows:msRows,width:{size:100,type:WidthType.PERCENTAGE}}));
+    children.push(heading("Next Steps"));
+    s.nextSteps.forEach(n=>children.push(numbered(n,"num-b")));
+    children.push(...footerBlock());
+  }
+
+  else if(currentMode==='invoice'){
+    const s = state.invoice; const t = computeInvoiceTotals();
+    const topTable = new Table({
+      width:{size:100,type:WidthType.PERCENTAGE},
+      borders:{top:{style:"none"},bottom:{style:"none"},left:{style:"none"},right:{style:"none"},insideHorizontal:{style:"none"},insideVertical:{style:"none"}},
+      rows:[ new TableRow({children:[
+        new TableCell({width:{size:60,type:WidthType.PERCENTAGE},children:[
+          new Paragraph({children:[new TextRun({text:"we",size:32,color:"1B1730"}),new TextRun({text:"collect",size:32,bold:true,italics:true,color:PURPLE})]}),
+          new Paragraph({children:[new TextRun({text:"Insight generation, made easy",size:16,color:GRAY})]})
+        ]}),
+        new TableCell({width:{size:40,type:WidthType.PERCENTAGE},children:[
+          new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:"Invoice No: "+(s.invNo||"WC00000"),bold:true,size:22,color:PURPLE_DARK})]}),
+          new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:"Date: "+s.invDate,size:18})]})
+        ]})
+      ]}) ]
+    });
+    children.push(topTable);
+    children.push(new Paragraph({text:"",spacing:{after:150}}));
+    children.push(new Paragraph({children:[new TextRun({text:"BILLED TO",bold:true,size:16,color:GRAY})]}));
+    children.push(new Paragraph({children:[new TextRun({text:s.billName,bold:true,size:22})],spacing:{after:20}}));
+    children.push(new Paragraph({children:[new TextRun({text:s.billCompany,size:20,color:GRAY})],spacing:{after:150}}));
+    if(s.invDesc){
+      children.push(new Paragraph({children:[new TextRun({text:"PROJECT DESCRIPTION",bold:true,size:16,color:GRAY})],spacing:{after:40}}));
+      children.push(bodyText(s.invDesc));
+    }
+    const itemRows=[ new TableRow({children:[cell("No",{bold:true,color:"FFFFFF",fill:PURPLE,width:6}),cell("Item",{bold:true,color:"FFFFFF",fill:PURPLE,width:44}),cell("Units",{bold:true,color:"FFFFFF",fill:PURPLE,width:12,right:true}),cell("Cost",{bold:true,color:"FFFFFF",fill:PURPLE,width:18,right:true}),cell("Total",{bold:true,color:"FFFFFF",fill:PURPLE,width:20,right:true})]}) ];
+    s.items.forEach((r,idx)=>itemRows.push(new TableRow({children:[cell(String(idx+1),{width:6}),cell(r.item,{width:44}),cell(r.units,{width:12,right:true}),cell(r.cost,{width:18,right:true}),cell(formatMoney(t.lineTotals[idx]),{width:20,right:true})]})));
+    children.push(new Table({rows:itemRows,width:{size:100,type:WidthType.PERCENTAGE}}));
+    children.push(new Paragraph({text:"",spacing:{after:120}}));
+    function totalLine(label,amount,opts={}){
+      return new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:label+":  ",bold:!!opts.bold,size:opts.bold?22:18}),new TextRun({text:formatMoney(amount),bold:!!opts.bold,size:opts.bold?22:18})],spacing:{after:40}});
+    }
+    children.push(totalLine("Sub-Total",t.subtotal));
+    children.push(totalLine(`Tax (${t.taxRate}%)`,t.tax));
+    children.push(totalLine("Total",t.total,{bold:true}));
+    if(s.depositEnabled){ children.push(totalLine(`Deposit Due (${s.depositPercent}%)`,t.deposit)); children.push(totalLine("Balance Due",t.balance)); }
+    if(s.vatExempt && s.vatExemptNote) children.push(new Paragraph({alignment:AlignmentType.RIGHT,children:[new TextRun({text:s.vatExemptNote,italics:true,size:16,color:GRAY})],spacing:{before:60,after:100}}));
+    children.push(new Paragraph({text:"",spacing:{before:200}}));
+    children.push(new Paragraph({children:[new TextRun({text:"PAYMENT TO",bold:true,size:16,color:GRAY})],spacing:{after:60}}));
+    s.payments.forEach(p=>{
+      children.push(new Paragraph({children:[new TextRun({text:p.bank,bold:true,size:20,color:PURPLE_DARK})]}));
+      children.push(new Paragraph({children:[new TextRun({text:p.acctName,size:18})]}));
+      children.push(new Paragraph({children:[new TextRun({text:p.acctNumber,size:18})],spacing:{after:120}}));
+    });
+    if(s.notes) children.push(new Paragraph({children:[new TextRun({text:s.notes,italics:true,size:16,color:GRAY})],spacing:{after:150}}));
+    children.push(new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"THANK YOU",bold:true,size:26,color:PURPLE_DARK})],spacing:{before:200,after:150}}));
+    children.push(new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:"www.wecollect.tech  |  D207 & D208 Ikota Complex, Lekki VGC",size:16,color:GRAY})]}));
+  }
+
+  else if(currentMode==='proposal'){
+    const s = state.proposal;
+    children.push(new Paragraph({children:[new TextRun({text:s.org?("Proposal for "+s.org):"",size:18,color:"FFFFFF"})],shading:{type:ShadingType.CLEAR,fill:PURPLE},spacing:{before:100}}));
+    children.push(new Paragraph({children:[new TextRun({text:s.title||"Untitled Proposal",bold:true,size:40,color:"FFFFFF"})],shading:{type:ShadingType.CLEAR,fill:PURPLE},spacing:{after: s.subtitle?60:150}}));
+    if(s.subtitle) children.push(new Paragraph({children:[new TextRun({text:s.subtitle,size:20,color:"FFFFFF"})],shading:{type:ShadingType.CLEAR,fill:PURPLE},spacing:{after:150}}));
+    children.push(new Paragraph({text:"",spacing:{after:100}}));
+
+    children.push(heading("Executive Summary"));
+    children.push(bodyText(s.execSummary));
+
+    children.push(heading("Project Objectives"));
+    s.objectives.forEach((o,i)=>{ children.push(subheading((i+1)+". "+o.title)); children.push(bodyText(o.desc)); });
+
+    children.push(heading("Project Scope"));
+    children.push(bodyText(s.scope));
+
+    children.push(heading("Methodology"));
+    s.methodology.forEach(m=>{ children.push(subheading(m.title)); children.push(bodyText(m.desc)); });
+
+    children.push(heading("Technology"));
+    s.technology.forEach(m=>{ children.push(subheading(m.title)); children.push(bodyText(m.desc)); });
+
+    children.push(heading("Implementation Plan"));
+    s.phases.forEach(p=>{ children.push(subheading(p.phase+": "+p.title)); children.push(bodyText(p.desc)); });
+
+    children.push(heading("Deliverables"));
+    s.deliverables.forEach(d=>{ children.push(subheading(d.category)); children.push(bodyText(d.desc)); });
+
+    children.push(heading("Next Steps"));
+    s.nextSteps.forEach(n=>children.push(numbered(n,"num-a")));
+
+    children.push(...footerBlock());
+  }
+
+  docConfig.sections.push({children});
+  const doc = new Document(docConfig);
+  const blob = await Packer.toBlob(doc);
+  const titleField = currentMode==='invoice' ? (state.invoice.invNo||'WeCollect_Invoice') : (state[currentMode].title || ('WeCollect_'+TPL_NAMES[currentMode]));
+  const suffix = {brief:'_Brief',quote:'_Quote',invoice:'_Invoice',proposal:'_Proposal'}[currentMode];
+  const filename = titleField.replace(/[^a-z0-9]+/gi,"_") + suffix + ".docx";
+  saveAs(blob, filename);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "wecollect-document-generator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WeCollect internal tool: AI-assisted brief, quote, invoice, and proposal generator.",
+  "engines": {
+    "node": ">=18"
+  }
+}
