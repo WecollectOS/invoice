@@ -8,6 +8,8 @@
 <script src="https://unpkg.com/docx"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"></script>
 <style>
   :root{
     --purple:#4B3FCF; --purple-dark:#372E9E; --purple-light:#EFEDFC;
@@ -410,8 +412,9 @@
 
     <div class="actions">
       <button class="btn-primary" onclick="downloadWord()">⬇ Download as Word (.docx)</button>
-      <button class="btn-secondary" onclick="window.print()">🖨 Download as PDF (Print)</button>
-      <div class="hint">PDF: choose "Save as PDF" in the print dialog. Word downloads as an editable .docx file.</div>
+      <button class="btn-secondary" id="pdfBtn" onclick="downloadPDF()">⬇ Download as PDF</button>
+      <div class="hint">PDF downloads immediately as a file — no print dialog. Word downloads as an editable .docx file.</div>
+      <div class="hint" id="pdfHint" style="display:none;color:var(--purple-dark);font-weight:600;">Generating PDF…</div>
     </div>
   </div>
 
@@ -1030,6 +1033,56 @@ function renderProposal(){
 /* =========================================================
    WORD (.docx) EXPORT
 ========================================================= */
+async function downloadPDF(){
+  if(!window.html2canvas || !window.jspdf){
+    alert("The PDF export library is still loading. Please wait a second and try again.");
+    return;
+  }
+  const btn = document.getElementById('pdfBtn');
+  const hint = document.getElementById('pdfHint');
+  btn.disabled = true;
+  hint.style.display = 'block';
+
+  try{
+    const pageEl = document.getElementById('previewPage');
+    const canvas = await html2canvas(pageEl, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff'
+    });
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidthMM = 210;
+    const pageHeightMM = 297;
+    const imgWidthMM = pageWidthMM;
+    const imgHeightMM = (canvas.height * imgWidthMM) / canvas.width;
+    const imgData = canvas.toDataURL('image/png', 1.0);
+
+    let heightLeft = imgHeightMM;
+    let position = 0;
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidthMM, imgHeightMM);
+    heightLeft -= pageHeightMM;
+
+    while(heightLeft > 0){
+      position = heightLeft - imgHeightMM;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidthMM, imgHeightMM);
+      heightLeft -= pageHeightMM;
+    }
+
+    const titleField = currentMode==='invoice' ? (state.invoice.invNo||'WeCollect_Invoice') : (state[currentMode].title || ('WeCollect_'+TPL_NAMES[currentMode]));
+    const suffix = {brief:'_Brief',quote:'_Quote',invoice:'_Invoice',proposal:'_Proposal'}[currentMode];
+    const filename = titleField.replace(/[^a-z0-9]+/gi,"_") + suffix + ".pdf";
+    pdf.save(filename);
+  }catch(err){
+    alert("Couldn't generate the PDF (" + err.message + "). Try the Word export instead, or reload and try again.");
+  }finally{
+    btn.disabled = false;
+    hint.style.display = 'none';
+  }
+}
+
 async function downloadWord(){
   if(!window.docx){ alert("The Word export library is still loading. Please wait a second and try again."); return; }
   const { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell, WidthType, ShadingType, AlignmentType } = window.docx;
