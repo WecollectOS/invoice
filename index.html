@@ -268,20 +268,27 @@
       <input type="text" id="brief_geo" oninput="setField('brief','geo',this.value)">
 
       <div class="section-label">Project Objectives</div>
-      <div class="row-list" id="brief_objectivesList"></div>
+      <label style="margin-top:0">Framing paragraph (optional)</label>
+      <textarea id="brief_objectivesIntro" placeholder="Optional context before the numbered list, e.g. what the study covers and why." oninput="setField('brief','objectivesIntro',this.value)"></textarea>
+      <div class="row-list" id="brief_objectivesList" style="margin-top:8px"></div>
       <button class="add-btn" onclick="addStrRow('brief','objectives')">+ Add objective</button>
 
       <div class="section-label">Target Respondents</div>
       <textarea id="brief_respondents" style="min-height:80px" oninput="setField('brief','respondents',this.value)"></textarea>
+      <label>Respondent segments (optional)</label>
+      <div class="hint" style="margin:0 0 6px">Shown as a table automatically once there are 3 or more segments — clearer than a paragraph for side-by-side comparison.</div>
+      <div id="brief_respondentSegmentsList"></div>
+      <button class="add-btn" onclick="addObjRow('brief','respondentSegments')">+ Add segment</button>
 
       <div class="section-label">Methodology &amp; Quality Control</div>
       <div class="row-list" id="brief_methodList"></div>
       <button class="add-btn" onclick="addStrRow('brief','method')">+ Add methodology point</button>
 
       <div class="section-label">Indicative Cost Range</div>
-      <textarea id="brief_costRangeText" oninput="setField('brief','costRangeText',this.value)"></textarea>
+      <textarea id="brief_costRangeText" placeholder="Leave blank to omit this section entirely" oninput="setField('brief','costRangeText',this.value)"></textarea>
 
       <div class="section-label">Deliverables</div>
+      <div class="hint" style="margin:0 0 6px">Leave empty to omit this section entirely — not every brief needs one.</div>
       <div class="row-list" id="brief_deliverList"></div>
       <button class="add-btn" onclick="addStrRow('brief','deliver')">+ Add deliverable</button>
 
@@ -435,7 +442,7 @@ const TPL_NAMES = { brief:"Project Brief", quote:"Detailed Quote", invoice:"Clie
 
 function freshState(){
   return {
-    brief: { title:"", tagline:"", geo:"", objectives:[""], respondents:"", method:[""], costRangeText:"", deliver:[""], nextSteps:[""] },
+    brief: { title:"", tagline:"", geo:"", objectivesIntro:"", objectives:[""], respondents:"", respondentSegments:[], method:[""], costRangeText:"", deliver:[""], nextSteps:[""] },
     quote: { title:"", tagline:"", geo:"", objectives:[""], costItems:[{activity:"",budget:"",desc:""}], taxRate:7.5, milestones:[{phase:"",duration:"",desc:""}], nextSteps:[""] },
     invoice: { invNo:"", invDate:"", billName:"", billCompany:"", invDesc:"", items:[{item:"",units:"1",cost:""}], taxRate:7.5, vatExempt:false, vatExemptNote:"", depositEnabled:false, depositPercent:50, payments:[{bank:"",acctName:"WeCollect Data Gathering LTD",acctNumber:""}], notes:"" },
     proposal: { title:"", org:"", subtitle:"", execSummary:"", objectives:[{title:"",desc:""}], scope:"", methodology:[{title:"",desc:""}], technology:[{title:"",desc:""}], phases:[{phase:"Phase 1",title:"",desc:""}], deliverables:[{category:"",desc:""}], nextSteps:[""] }
@@ -445,6 +452,7 @@ let state = freshState();
 
 /* config for object-array (multi-field) row lists: mode.key -> field defs */
 const OBJ_CONFIG = {
+  'brief.respondentSegments': [{k:'segment',ph:'Segment e.g. Traders',type:'input'},{k:'sampleSize',ph:'Sample size e.g. 40 or n=80',type:'input'}],
   'quote.costItems':   [{k:'activity',ph:'Activity / Cost category',type:'input'},{k:'budget',ph:'Budget e.g. ₦500,000',type:'input'},{k:'desc',ph:'Description',type:'textarea'}],
   'quote.milestones':  [{k:'phase',ph:'Phase e.g. Field Mapping',type:'input'},{k:'duration',ph:'Duration e.g. Week 3-4',type:'input'},{k:'desc',ph:'Key activity description',type:'textarea'}],
   'invoice.items':     [{k:'item',ph:'Item / description',type:'textarea'},{k:'units',ph:'Units',type:'input'},{k:'cost',ph:'Cost/unit ₦',type:'input'}],
@@ -456,6 +464,7 @@ const OBJ_CONFIG = {
   'proposal.deliverables': [{k:'category',ph:'Category e.g. Databases',type:'input'},{k:'desc',ph:'Description',type:'textarea'}]
 };
 const ROW_LIST_EL = {
+  'brief.respondentSegments':'brief_respondentSegmentsList',
   'quote.costItems':'quote_costItemsList', 'quote.milestones':'quote_milestonesList',
   'invoice.items':'invoice_itemsList', 'invoice.payments':'invoice_paymentsList',
   'proposal.objectives':'proposal_objectivesList', 'proposal.methodology':'proposal_methodologyList',
@@ -597,11 +606,13 @@ const SCHEMA_INSTRUCTIONS = {
  "title": string (project title),
  "tagline": string (one sentence summarizing the project's aim),
  "geo": string (geographic coverage, comma separated, empty string if not mentioned),
- "objectives": string[] (3-6 objectives, each "Bold Label: one sentence explanation" style),
- "respondents": string (description of target respondent groups, sample sizes if stated),
- "method": string[] (3-5 methodology / quality-control bullet points, mention geo-tagging, timestamping, real-time quality assurance and the WeCollect app where relevant),
- "costRangeText": string (capture ANY pricing/budget information present in the source text, in whatever form it's given — per-respondent rate, per-interview rate, day rate, lump-sum project budget, a range, "around X", etc. Preserve the units/framing the source text actually used rather than forcing it into a "per interview" shape. Only leave this empty if the source text truly contains no pricing information at all. If PRICING_RULE below allows suggesting a figure, follow that instead of leaving it empty),
- "deliver": string[] (1-3 deliverables, e.g. cleaned dataset),
+ "objectivesIntro": string (OPTIONAL 1-3 sentence framing paragraph that sets up context before the numbered objectives list — e.g. what the study will cover and why. Only include this if the source text actually has this kind of framing/background language; otherwise leave it as an empty string rather than manufacturing one),
+ "objectives": string[] (3-8 objectives. Match the STYLE the source text actually uses: if it gives short punchy "Bold Label: explanation" style points, use that; if it gives plain one-sentence action statements like "Determine whether X" or "Assess how Y", use plain sentences instead — do not force every project into the label style),
+ "respondents": string (description of target respondent groups, sample sizes/screening criteria if stated — preserve any sub-structure like "Participants will be screened based on:" followed by criteria, using line breaks),
+ "respondentSegments": [{"segment": string (name of a distinct respondent group/segment, e.g. "Traders", "SMEs / Business Owners", "Target Group 1: Decision Makers"), "sampleSize": string (assumed sample size for this segment if stated, e.g. "40" or "n=80"; empty string if not stated)}] (ONLY populate this if the source text describes 2 or more clearly distinct named segments/groups with — ideally — different sample sizes, of the kind that would naturally read as a table, e.g. "Traders: 40, SMEs: 30, Salary Earners: 30". If the source describes one undifferentiated audience or the groups are too qualitative to tabulate, return an empty array and rely on "respondents" instead),
+ "method": string[] (4-8 methodology / quality-control bullet points covering however the source text actually describes its approach — data collection method, quality control steps, mention geo-tagging/timestamping/WeCollect app only if genuinely relevant to what's described),
+ "costRangeText": string (capture ANY pricing/budget information present in the source text, in whatever form it's given — per-respondent rate, per-interview rate, day rate, lump-sum project budget, a range, "around X", etc. Preserve the units/framing the source text actually used. LEAVE THIS EMPTY if the source text contains no pricing information — many valid briefs have no cost section at all; do not invent placeholder pricing language. If PRICING_RULE below allows suggesting a figure, follow that instead of leaving it empty),
+ "deliver": string[] (ONLY include items the source text actually mentions as outputs/deliverables — e.g. cleaned dataset, report, dashboard. If the source text doesn't mention deliverables at all, return an empty array rather than inventing generic ones — not every brief needs this section),
  "nextSteps": string[] (3-5 next steps, typical WeCollect next steps are: review and sign ToR, review and finalize questionnaire, approve timeline and budget, commence field deployment)
 }`,
   quote: `Return ONLY a JSON object with exactly these keys:
@@ -682,10 +693,13 @@ function normalize(mode, obj){
   if(mode==='brief'){
     return {
       title: asStr(obj.title)||f.title, tagline: asStr(obj.tagline), geo: asStr(obj.geo),
+      objectivesIntro: asStr(obj.objectivesIntro),
       objectives: asArray(obj.objectives).map(asStr).filter(Boolean).length ? asArray(obj.objectives).map(asStr) : f.objectives,
-      respondents: asStr(obj.respondents), method: asArray(obj.method).map(asStr).filter(Boolean).length ? asArray(obj.method).map(asStr) : f.method,
+      respondents: asStr(obj.respondents),
+      respondentSegments: asArray(obj.respondentSegments).map(r=>({segment:asStr(r.segment),sampleSize:asStr(r.sampleSize)})).filter(r=>r.segment),
+      method: asArray(obj.method).map(asStr).filter(Boolean).length ? asArray(obj.method).map(asStr) : f.method,
       costRangeText: asStr(obj.costRangeText),
-      deliver: asArray(obj.deliver).map(asStr).filter(Boolean).length ? asArray(obj.deliver).map(asStr) : f.deliver,
+      deliver: asArray(obj.deliver).map(asStr).filter(Boolean),
       nextSteps: asArray(obj.nextSteps).map(asStr).filter(Boolean).length ? asArray(obj.nextSteps).map(asStr) : f.nextSteps
     };
   }
@@ -757,6 +771,7 @@ async function generateWithAI(){
       },
       body: JSON.stringify({
         prompt: buildPrompt(currentMode, sourceText, suggestPricing),
+        mode: currentMode,
         useWebSearch: suggestPricing
       })
     });
@@ -799,9 +814,11 @@ function enterEditScreen(){
     document.getElementById('brief_title').value = state.brief.title;
     document.getElementById('brief_tagline').value = state.brief.tagline;
     document.getElementById('brief_geo').value = state.brief.geo;
+    document.getElementById('brief_objectivesIntro').value = state.brief.objectivesIntro;
     document.getElementById('brief_respondents').value = state.brief.respondents;
     document.getElementById('brief_costRangeText').value = state.brief.costRangeText;
     renderStrList('brief','objectives'); renderStrList('brief','method'); renderStrList('brief','deliver'); renderStrList('brief','nextSteps');
+    renderObjList('brief','respondentSegments');
   }
   if(currentMode==='quote'){
     document.getElementById('quote_title').value = state.quote.title;
@@ -850,8 +867,29 @@ function render(){
   else if(currentMode==='proposal') renderProposal();
 }
 
+function segmentsTableHTML(segments){
+  if(segments.length <= 2) return '';
+  const nums = segments.map(r=>{
+    const n = parseInt((r.sampleSize||'').replace(/[^\d]/g,''), 10);
+    return isNaN(n) ? null : n;
+  });
+  const total = nums.every(n=>n!==null) ? nums.reduce((a,b)=>a+b,0) : null;
+  return `
+          <table>
+            <tr><th>Segment</th><th>Assumed Sample Size</th></tr>
+            ${segments.map(r=>`<tr><td>${escapeHtml(r.segment)}</td><td>${escapeHtml(r.sampleSize)}</td></tr>`).join("")}
+            ${total!==null ? `<tr class="total-row"><td>Total</td><td>${total}</td></tr>` : ''}
+          </table>`;
+}
 function renderBrief(){
   const s = state.brief;
+  const costSection = s.costRangeText ? `
+          <h2>Indicative Cost Range</h2>
+          <p style="white-space:pre-line">${escapeHtml(s.costRangeText)}</p>
+          <div class="disclaimer">Final pricing will be confirmed after questionnaire review and specific location deployment planning.</div>` : '';
+  const deliverSection = s.deliver.length ? `
+      <h2>Deliverables</h2>
+      <ul>${s.deliver.map(d=>`<li>${escapeHtml(d)}</li>`).join("")}</ul>` : '';
   const html = `
     <div class="p-header">
       <h1>${escapeHtml(s.title||"Untitled Project")}</h1>
@@ -862,20 +900,16 @@ function renderBrief(){
       <div class="cols">
         <div>
           <h2>Project Objectives</h2>
+          ${s.objectivesIntro ? `<p>${escapeHtml(s.objectivesIntro)}</p>` : ''}
           <ol>${s.objectives.map(o=>`<li>${escapeHtml(o)}</li>`).join("")}</ol>
           <h2>Methodology &amp; Quality Control</h2>
           <ul>${s.method.map(m=>`<li>${escapeHtml(m)}</li>`).join("")}</ul>
         </div>
         <div>
           <h2>Target Respondents</h2>
-          <p style="white-space:pre-line">${escapeHtml(s.respondents)}</p>
-          <h2>Indicative Cost Range</h2>
-          <p style="white-space:pre-line">${s.costRangeText ? escapeHtml(s.costRangeText) : '<span style="color:#6B6880;font-style:italic">No cost range yet — add one in the sidebar, or check "let AI suggest a range" before generating.</span>'}</p>
-          <div class="disclaimer">Final pricing will be confirmed after questionnaire review and specific location deployment planning.</div>
+          <p style="white-space:pre-line">${escapeHtml(s.respondents)}</p>${segmentsTableHTML(s.respondentSegments)}${costSection}
         </div>
-      </div>
-      <h2>Deliverables</h2>
-      <ul>${s.deliver.map(d=>`<li>${escapeHtml(d)}</li>`).join("")}</ul>
+      </div>${deliverSection}
       <h2>Next Steps</h2>
       <ol>${s.nextSteps.map(n=>`<li>${escapeHtml(n)}</li>`).join("")}</ol>
     </div>
@@ -1144,16 +1178,30 @@ async function downloadWord(){
     const s = state.brief;
     children.push(...headerBlock(s.title||"Untitled Project", s.tagline, s.geo));
     children.push(heading("Project Objectives"));
+    if(s.objectivesIntro) children.push(bodyText(s.objectivesIntro));
     s.objectives.forEach(o=>children.push(numbered(o,"num-a")));
     children.push(heading("Target Respondents"));
     children.push(bodyText(s.respondents));
+    if(s.respondentSegments.length > 2){
+      const nums = s.respondentSegments.map(r=>{ const n=parseInt((r.sampleSize||'').replace(/[^\d]/g,''),10); return isNaN(n)?null:n; });
+      const total = nums.every(n=>n!==null) ? nums.reduce((a,b)=>a+b,0) : null;
+      const segRows = [ new TableRow({children:[cell("Segment",{bold:true,color:"FFFFFF",fill:PURPLE,width:65}),cell("Assumed Sample Size",{bold:true,color:"FFFFFF",fill:PURPLE,width:35})]}) ];
+      s.respondentSegments.forEach(r=>segRows.push(new TableRow({children:[cell(r.segment,{width:65}),cell(r.sampleSize,{width:35})]})));
+      if(total!==null) segRows.push(new TableRow({children:[cell("Total",{bold:true,fill:LIGHT,width:65}),cell(String(total),{bold:true,fill:LIGHT,width:35})]}));
+      children.push(new Table({rows:segRows,width:{size:100,type:WidthType.PERCENTAGE}}));
+      children.push(new Paragraph({text:"",spacing:{after:100}}));
+    }
     children.push(heading("Methodology & Quality Control"));
     s.method.forEach(m=>children.push(bullet(m)));
-    children.push(heading("Indicative Cost Range"));
-    children.push(bodyText(s.costRangeText));
-    children.push(new Paragraph({children:[new TextRun({text:"Final pricing will be confirmed after questionnaire review and specific location deployment planning.",italics:true,color:RED,size:18})],spacing:{after:150}}));
-    children.push(heading("Deliverables"));
-    s.deliver.forEach(d=>children.push(bullet(d)));
+    if(s.costRangeText){
+      children.push(heading("Indicative Cost Range"));
+      children.push(bodyText(s.costRangeText));
+      children.push(new Paragraph({children:[new TextRun({text:"Final pricing will be confirmed after questionnaire review and specific location deployment planning.",italics:true,color:RED,size:18})],spacing:{after:150}}));
+    }
+    if(s.deliver.length){
+      children.push(heading("Deliverables"));
+      s.deliver.forEach(d=>children.push(bullet(d)));
+    }
     children.push(heading("Next Steps"));
     s.nextSteps.forEach(n=>children.push(numbered(n,"num-b")));
     children.push(...footerBlock());
