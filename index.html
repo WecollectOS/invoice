@@ -635,7 +635,7 @@ const SCHEMA_INSTRUCTIONS = {
  "items": [{"item": string (line item description), "units": string (quantity, e.g. "1" or "5000"), "cost": string (cost PER UNIT in Naira, ONLY if explicitly stated or calculable from a stated total ÷ units; otherwise empty string — never invent a figure)}],
  "vatExempt": boolean (true only if source text explicitly says the client is VAT exempt),
  "vatExemptNote": string (e.g. "NB: [Org] is exempted from VAT" if vatExempt is true, else empty string),
- "depositPercent": number|null (percentage if a deposit/upfront payment is explicitly mentioned, else null),
+ "depositPercent": number (percentage if a deposit/upfront payment is explicitly mentioned, else 0),
  "notes": string (any special payment instructions mentioned, else empty string)
 }`,
   proposal: `Return ONLY a JSON object with exactly these keys:
@@ -661,15 +661,15 @@ function buildPrompt(mode, sourceText, suggestPricing){
 
   return `You are a data-extraction assistant for WeCollect, a Nigerian data-gathering infrastructure company (field data collection, geo-verification, quality control for research and market studies).
 
-A WeCollect team member has pasted raw notes describing a project. Extract and structure the relevant details into the JSON schema below for a "${TPL_NAMES[mode]}" document.
+A WeCollect team member has pasted raw notes describing a project. Extract and structure the relevant details for a "${TPL_NAMES[mode]}" document by calling the extract_document_data tool.
 
 CRITICAL RULES:
-- Respond with ONLY the JSON object. No markdown code fences, no explanation before or after.
 - ${pricingRule}
 - Non-monetary numbers (sample sizes, percentages, dates) follow the same logic: use them if stated or directly calculable, otherwise leave empty — these are never covered by PRICING_RULE's web-search allowance even when suggestPricing is on.
 - Keep each text field concise (1-2 sentences) since output length is limited.
-- If the source text is sparse, still produce a complete, well-structured JSON using sensible generic WeCollect-style section content for fields with no source information, but leave non-cost numeric fields empty rather than fabricated.
+- If the source text is sparse, still produce a complete, well-structured result using sensible generic WeCollect-style section content for fields with no source information, but leave non-cost numeric fields empty rather than fabricated.
 
+FIELD GUIDANCE (matches the tool's schema — use this to decide what belongs in each field):
 ${SCHEMA_INSTRUCTIONS[mode]}
 
 SOURCE TEXT:
@@ -719,7 +719,7 @@ function normalize(mode, obj){
       invDesc: asStr(obj.invDesc),
       items: asArray(obj.items).map(r=>({item:asStr(r.item),units:asStr(r.units)||"1",cost:asStr(r.cost)})),
       taxRate: 7.5, vatExempt: asBool(obj.vatExempt), vatExemptNote: asStr(obj.vatExemptNote),
-      depositEnabled: obj.depositPercent!=null && obj.depositPercent!=="", depositPercent: asNum(obj.depositPercent, 50),
+      depositEnabled: asNum(obj.depositPercent, 0) > 0, depositPercent: asNum(obj.depositPercent, 0) || 50,
       payments: f.payments, notes: asStr(obj.notes)
     };
   }
@@ -782,11 +782,8 @@ async function generateWithAI(){
       throw new Error(data.error || ("Request failed with status " + response.status));
     }
 
-    const textBlocks = (data.content || []).filter(b=>b.type==='text').map(b=>b.text).join("\n");
-    if(!textBlocks) throw new Error("Empty response from AI.");
-    const cleaned = stripCodeFences(textBlocks);
-    const parsed = JSON.parse(cleaned);
-    state[currentMode] = normalize(currentMode, parsed);
+    if(!data.result || typeof data.result !== 'object') throw new Error("Empty or invalid response from AI.");
+    state[currentMode] = normalize(currentMode, data.result);
     enterEditScreen();
   }catch(err){
     showAiError("Something went wrong reading that input (" + err.message + "). You can try again, or start with a blank template and fill it in manually.");
