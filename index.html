@@ -276,7 +276,7 @@
       <div class="section-label">Target Respondents</div>
       <textarea id="brief_respondents" style="min-height:80px" oninput="setField('brief','respondents',this.value)"></textarea>
       <label>Respondent segments (optional)</label>
-      <div class="hint" style="margin:0 0 6px">Shown as a table automatically once there are 3 or more segments — clearer than a paragraph for side-by-side comparison.</div>
+      <div class="hint" style="margin:0 0 6px">1–2 segments show as a short inline line; 3 or more switch to a table automatically for clarity.</div>
       <div id="brief_respondentSegmentsList"></div>
       <button class="add-btn" onclick="addObjRow('brief','respondentSegments')">+ Add segment</button>
 
@@ -865,8 +865,17 @@ function render(){
 }
 
 function segmentsTableHTML(segments){
-  if(segments.length <= 2) return '';
-  const nums = segments.map(r=>{
+  const filled = segments.filter(r => (r.segment||'').trim() || (r.sampleSize||'').trim());
+  if(!filled.length) return '';
+  if(filled.length <= 2){
+    // Fewer than 3 segments doesn't earn a full table, but the data must
+    // still show up somewhere rather than silently vanishing from the doc.
+    return `<p><strong>Segments:</strong> ${filled.map(r=>{
+      const label = escapeHtml(r.segment || '(unnamed segment)');
+      return r.sampleSize ? `${label} (${escapeHtml(r.sampleSize)})` : label;
+    }).join(', ')}</p>`;
+  }
+  const nums = filled.map(r=>{
     const n = parseInt((r.sampleSize||'').replace(/[^\d]/g,''), 10);
     return isNaN(n) ? null : n;
   });
@@ -874,7 +883,7 @@ function segmentsTableHTML(segments){
   return `
           <table>
             <tr><th>Segment</th><th>Assumed Sample Size</th></tr>
-            ${segments.map(r=>`<tr><td>${escapeHtml(r.segment)}</td><td>${escapeHtml(r.sampleSize)}</td></tr>`).join("")}
+            ${filled.map(r=>`<tr><td>${escapeHtml(r.segment)}</td><td>${escapeHtml(r.sampleSize)}</td></tr>`).join("")}
             ${total!==null ? `<tr class="total-row"><td>Total</td><td>${total}</td></tr>` : ''}
           </table>`;
 }
@@ -1076,6 +1085,15 @@ async function downloadPDF(){
 
   try{
     const pageEl = document.getElementById('previewPage');
+
+    // Find natural content boundaries (section headings, paragraphs, tables,
+    // the two-column block, etc.) BEFORE rasterizing, using the live DOM —
+    // these become the only places we're allowed to cut between pages, so a
+    // heading or table row never gets sliced in half.
+    const pageRectTop = pageEl.getBoundingClientRect().top;
+    const candidateEls = pageEl.querySelectorAll(':scope > *, :scope > .p-body > *, :scope > .inv-page > *');
+    const breakBottomsPx = Array.from(candidateEls).map(el => el.getBoundingClientRect().bottom - pageRectTop);
+
     const canvas = await html2canvas(pageEl, {
       scale: 2,
       useCORS: true,
@@ -1084,23 +1102,54 @@ async function downloadPDF(){
 
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageWidthMM = 210;
+    const imgWidthMM = 210;
     const pageHeightMM = 297;
-    const imgWidthMM = pageWidthMM;
-    const imgHeightMM = (canvas.height * imgWidthMM) / canvas.width;
-    const imgData = canvas.toDataURL('image/png', 1.0);
+    const pxPerMM = canvas.width / imgWidthMM; // canvas px per output mm (same in both axes since undistorted)
+    const pageHeightPx = pageHeightMM * pxPerMM;
+    const scaleFactor = canvas.width / pageEl.offsetWidth; // DOM px -> canvas px
+    const breakBottomsCanvasPx = breakBottomsPx.map(y => y * scaleFactor).sort((a,b)=>a-b);
+    const minProgressPx = Math.max(60, pageHeightPx * 0.06); // ignore breakpoints that barely move forward
 
-    let heightLeft = imgHeightMM;
-    let position = 0;
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidthMM, imgHeightMM);
-    heightLeft -= pageHeightMM;
-
-    while(heightLeft > 0){
-      position = heightLeft - imgHeightMM;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidthMM, imgHeightMM);
-      heightLeft -= pageHeightMM;
+    // Decide slice boundaries: for each page, go as far as possible without
+    // passing pageHeightPx, snapped back to the nearest real content edge.
+    // A tiny leftover remainder (e.g. a few px of trailing CSS padding after
+    // the last real element) gets folded into the current page rather than
+    // spawning its own near-blank page.
+    const slices = [];
+    let cursor = 0;
+    const totalPx = canvas.height;
+    while(cursor < totalPx - 2){
+      const remaining = totalPx - cursor;
+      if(remaining <= pageHeightPx){
+        slices.push({ from: cursor, to: totalPx });
+        break;
+      }
+      const target = cursor + pageHeightPx;
+      let best = null;
+      for(const b of breakBottomsCanvasPx){
+        if(b > cursor + minProgressPx && b <= target) best = b; // sorted ascending, so last match is the largest ≤ target
+      }
+      let cutAt = best !== null ? best : target; // no clean breakpoint found — fall back to a hard cut rather than an infinite loop
+      if(totalPx - cutAt <= minProgressPx) cutAt = totalPx; // trailing sliver — absorb into this page instead of a new one
+      slices.push({ from: cursor, to: cutAt });
+      cursor = cutAt;
+      if(cutAt >= totalPx) break;
     }
+
+    slices.forEach((slice, i) => {
+      const sliceHeightPx = Math.max(1, Math.round(slice.to - slice.from));
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = sliceHeightPx;
+      const ctx = sliceCanvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+      ctx.drawImage(canvas, 0, slice.from, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+      const sliceDataUrl = sliceCanvas.toDataURL('image/png', 1.0);
+      const sliceHeightMM = sliceHeightPx / pxPerMM;
+      if(i > 0) pdf.addPage();
+      pdf.addImage(sliceDataUrl, 'PNG', 0, 0, imgWidthMM, sliceHeightMM);
+    });
 
     const titleField = currentMode==='invoice' ? (state.invoice.invNo||'WeCollect_Invoice') : (state[currentMode].title || ('WeCollect_'+TPL_NAMES[currentMode]));
     const suffix = {brief:'_Brief',quote:'_Quote',invoice:'_Invoice',proposal:'_Proposal'}[currentMode];
@@ -1179,11 +1228,18 @@ async function downloadWord(){
     s.objectives.forEach(o=>children.push(numbered(o,"num-a")));
     children.push(heading("Target Respondents"));
     children.push(bodyText(s.respondents));
-    if(s.respondentSegments.length > 2){
-      const nums = s.respondentSegments.map(r=>{ const n=parseInt((r.sampleSize||'').replace(/[^\d]/g,''),10); return isNaN(n)?null:n; });
+    const filledSegments = s.respondentSegments.filter(r => (r.segment||'').trim() || (r.sampleSize||'').trim());
+    if(filledSegments.length > 0 && filledSegments.length <= 2){
+      const summary = filledSegments.map(r=>{
+        const label = r.segment || '(unnamed segment)';
+        return r.sampleSize ? `${label} (${r.sampleSize})` : label;
+      }).join(', ');
+      children.push(new Paragraph({children:[new TextRun({text:"Segments: ",bold:true}), new TextRun({text:summary})], spacing:{after:100}}));
+    } else if(filledSegments.length > 2){
+      const nums = filledSegments.map(r=>{ const n=parseInt((r.sampleSize||'').replace(/[^\d]/g,''),10); return isNaN(n)?null:n; });
       const total = nums.every(n=>n!==null) ? nums.reduce((a,b)=>a+b,0) : null;
       const segRows = [ new TableRow({children:[cell("Segment",{bold:true,color:"FFFFFF",fill:PURPLE,width:65}),cell("Assumed Sample Size",{bold:true,color:"FFFFFF",fill:PURPLE,width:35})]}) ];
-      s.respondentSegments.forEach(r=>segRows.push(new TableRow({children:[cell(r.segment,{width:65}),cell(r.sampleSize,{width:35})]})));
+      filledSegments.forEach(r=>segRows.push(new TableRow({children:[cell(r.segment,{width:65}),cell(r.sampleSize,{width:35})]})));
       if(total!==null) segRows.push(new TableRow({children:[cell("Total",{bold:true,fill:LIGHT,width:65}),cell(String(total),{bold:true,fill:LIGHT,width:35})]}));
       children.push(new Table({rows:segRows,width:{size:100,type:WidthType.PERCENTAGE}}));
       children.push(new Paragraph({text:"",spacing:{after:100}}));
