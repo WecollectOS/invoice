@@ -1091,7 +1091,7 @@ async function downloadPDF(){
     // these become the only places we're allowed to cut between pages, so a
     // heading or table row never gets sliced in half.
     const pageRectTop = pageEl.getBoundingClientRect().top;
-    const candidateEls = pageEl.querySelectorAll(':scope > *, :scope > .p-body > *, :scope > .inv-page > *');
+    const candidateEls = pageEl.querySelectorAll(':scope > *, :scope > .p-body > *, :scope > .p-body > .cols > div > *, :scope > .inv-page > *');
     const breakBottomsPx = Array.from(candidateEls).map(el => el.getBoundingClientRect().bottom - pageRectTop);
 
     const canvas = await html2canvas(pageEl, {
